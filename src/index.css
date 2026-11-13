@@ -1,7 +1,55 @@
 @import "tailwindcss";
 
 @layer base {
+  :root {
+    --sona-canvas: #f7f3ec;
+    --sona-surface: #fcf9f4;
+    --sona-surface-alt: #efe9de;
+    --sona-border: #ddd5c7;
+    --sona-ink: #1f1b18;
+    --sona-muted: #5c534a;
+    --sona-accent: #b84a2e;
+    --sona-accent-hover: #9e3d24;
+    --sona-brass: #c68b3c;
+  }
+
   body {
+    background-color: var(--sona-canvas);
+    color: var(--sona-ink);
     font-family: "Plus Jakarta Sans", -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+}
+
+.font-display {
+  font-family: "Fraunces", Georgia, serif;
+}
+
+.font-mono-tabular {
+  font-family: "JetBrains Mono", ui-monospace, monospace;
+  font-variant-numeric: tabular-nums;
+}
+
+@keyframes vinyl-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.animate-vinyl-spin {
+  animation: vinyl-spin 6s linear infinite;
+}
+
+.animate-vinyl-paused {
+  animation: vinyl-spin 6s linear infinite;
+  animation-play-state: paused;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .animate-vinyl-spin {
+    animation: none;
   }
 }
