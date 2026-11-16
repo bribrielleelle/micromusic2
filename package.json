@@ -14,7 +14,7 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "@clerk/backend": "^3.28.0",
+    "@clerk/backend": "^3.29.0",
     "@google/genai": "^2.32.0",
     "@tailwindcss/vite": "^4.3.5",
     "@types/pg": "^8.23.1",
