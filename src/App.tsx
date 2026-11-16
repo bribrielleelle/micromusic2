@@ -1,9 +1,10 @@
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Bookmark,
   Compass,
   Disc3,
   Heart,
+  LogOut,
   Menu,
   Pause,
   Play,
@@ -25,6 +26,7 @@ import {
 } from './design/tokens';
 import { VinylDisplay } from './components/VinylDisplay';
 import { DesignSpecView } from './components/DesignSpecView';
+import { AuthGateModal, type SessionUser } from './components/AuthGateModal';
 
 type NavSection = 'Now Playing' | 'Browse' | 'Communities' | 'Charts' | 'Settings';
 type PrototypeMode = 'wireframe' | 'spec';
@@ -53,6 +55,24 @@ export default function App() {
   const [likedIds, setLikedIds] = useState<string[]>(['trk-1']);
   const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(['trk-2']);
   const [crates, setCrates] = useState(PROTOTYPE_CRATES);
+  const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+
+  useEffect(() => {
+    fetch('/api/auth/me')
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.user) {
+          setSessionUser(data.user);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    setSessionUser(null);
+  };
 
   const currentTrack: PrototypeTrack = PROTOTYPE_TRACKS[currentTrackIndex];
   const upNextTrack: PrototypeTrack =
@@ -242,10 +262,35 @@ export default function App() {
         </div>
       </div>
 
-      {/* Invite-only member preview */}
+      {/* Invite-only member session footer */}
       <div className="border-t border-[#DDD5C7] px-5 py-3.5 flex items-center justify-between text-xs text-[#5C534A]">
-        <span>@analog_maya</span>
-        <span>Member</span>
+        {sessionUser ? (
+          <>
+            <span className="font-medium text-[#1F1B18] truncate">
+              @{sessionUser.username}
+            </span>
+            <button
+              type="button"
+              onClick={handleLogout}
+              className="inline-flex items-center gap-1 text-[#5C534A] hover:text-[#B84A2E] cursor-pointer"
+              aria-label="Sign out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+              <span>Sign out</span>
+            </button>
+          </>
+        ) : (
+          <>
+            <span>Invite-only hub</span>
+            <button
+              type="button"
+              onClick={() => setAuthModalOpen(true)}
+              className="font-semibold text-[#B84A2E] hover:text-[#9E3D24] cursor-pointer"
+            >
+              Sign in
+            </button>
+          </>
+        )}
       </div>
     </div>
   );
@@ -660,6 +705,12 @@ export default function App() {
           </div>
         </div>
       </footer>
+
+      <AuthGateModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onAuthenticated={(user) => setSessionUser(user)}
+      />
     </div>
   );
 }
