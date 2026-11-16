@@ -59,7 +59,7 @@ export default function App() {
   const [authModalOpen, setAuthModalOpen] = useState(false);
 
   useEffect(() => {
-    fetch('/api/auth/me')
+    fetch('/api/auth/me', { credentials: 'include' })
       .then((res) => (res.ok ? res.json() : null))
       .then((data) => {
         if (data?.user) {
@@ -70,7 +70,7 @@ export default function App() {
   }, []);
 
   const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST' }).catch(() => {});
+    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
     setSessionUser(null);
   };
 

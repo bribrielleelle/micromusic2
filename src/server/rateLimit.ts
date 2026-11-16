@@ -1,6 +1,6 @@
 import { and, count, eq, gte } from 'drizzle-orm';
 import type { NextFunction, Request, Response } from 'express';
-import { getDb, isDatabaseConfigured } from '../db/index.ts';
+import { classifyDatabaseError, getDb, isDatabaseConfigured } from '../db/index.ts';
 import { rateLimits } from '../db/schema.ts';
 import type { AuthRequest } from './auth.ts';
 
@@ -81,8 +81,9 @@ export function dbRateLimit(options: RateLimitOptions) {
       }
       next();
     } catch (error) {
-      console.error('Rate limit check failed:', error);
-      return res.status(500).json({ error: 'Unable to validate request rate limit.' });
+      const classified = classifyDatabaseError(error);
+      console.warn('Rate limit check unavailable:', classified.message);
+      return res.status(classified.status).json({ error: classified.message });
     }
   };
 }

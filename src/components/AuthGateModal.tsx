@@ -44,13 +44,26 @@ export function AuthGateModal({
 
       const res = await fetch(endpoint, {
         method: 'POST',
+        credentials: 'include',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(body),
       });
 
-      const data = await res.json();
+      const rawText = await res.text();
+      let data: { error?: string; user?: SessionUser } = {};
+      if (rawText) {
+        try {
+          data = JSON.parse(rawText);
+        } catch {
+          data = {};
+        }
+      }
+
       if (!res.ok) {
-        setError(data?.error || 'Unable to authenticate.');
+        setError(
+          data?.error ||
+            `Authentication request failed (HTTP ${res.status}). Ensure the Express server is running and DATABASE_URL is configured.`,
+        );
         return;
       }
 
@@ -59,7 +72,9 @@ export function AuthGateModal({
         onClose();
       }
     } catch {
-      setError('Unable to reach authentication server.');
+      setError(
+        'Network error reaching /api/auth. Refresh the page or verify the dev server is running.',
+      );
     } finally {
       setSubmitting(false);
     }

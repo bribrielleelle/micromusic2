@@ -2,7 +2,7 @@ import crypto from 'node:crypto';
 import { verifyToken } from '@clerk/backend';
 import { eq } from 'drizzle-orm';
 import type { NextFunction, Request, Response } from 'express';
-import { getDb, isDatabaseConfigured } from '../db/index.ts';
+import { classifyDatabaseError, getDb, isDatabaseConfigured } from '../db/index.ts';
 import { users } from '../db/schema.ts';
 
 export type UserRole = 'user' | 'admin';
@@ -112,27 +112,44 @@ export function parseCookies(cookieHeader: string | undefined): Record<string, s
   return result;
 }
 
-export function setSessionCookie(res: Response, userId: string): void {
+function isHttpsRequest(req: Request): boolean {
+  if (req.secure) return true;
+  const proto = req.headers['x-forwarded-proto'];
+  if (typeof proto === 'string') {
+    return proto.split(',')[0].trim() === 'https';
+  }
+  return false;
+}
+
+export function setSessionCookie(req: Request, res: Response, userId: string): void {
   const token = signSessionToken(userId);
-  const isProd = process.env.NODE_ENV === 'production';
+  const https = isHttpsRequest(req);
   const attrs = [
     `${SESSION_COOKIE_NAME}=${encodeURIComponent(token)}`,
     'Path=/',
     'HttpOnly',
-    'SameSite=Lax',
+    https ? 'SameSite=None' : 'SameSite=Lax',
     `Max-Age=${SESSION_MAX_AGE_SECONDS}`,
   ];
-  if (isProd) {
+  if (https) {
     attrs.push('Secure');
   }
   res.setHeader('Set-Cookie', attrs.join('; '));
 }
 
-export function clearSessionCookie(res: Response): void {
-  res.setHeader(
-    'Set-Cookie',
-    `${SESSION_COOKIE_NAME}=; Path=/; HttpOnly; SameSite=Lax; Max-Age=0`,
-  );
+export function clearSessionCookie(req: Request, res: Response): void {
+  const https = isHttpsRequest(req);
+  const attrs = [
+    `${SESSION_COOKIE_NAME}=`,
+    'Path=/',
+    'HttpOnly',
+    https ? 'SameSite=None' : 'SameSite=Lax',
+    'Max-Age=0',
+  ];
+  if (https) {
+    attrs.push('Secure');
+  }
+  res.setHeader('Set-Cookie', attrs.join('; '));
 }
 
 async function resolveAuthenticatedUserId(req: Request): Promise<{
@@ -203,7 +220,8 @@ export async function optionalAuth(req: AuthRequest, _res: Response, next: NextF
       req.authUser = row;
     }
   } catch (error) {
-    console.error('Optional auth resolution failed:', error);
+    const classified = classifyDatabaseError(error);
+    console.warn('Optional auth unavailable:', classified.message);
   }
   next();
 }
@@ -245,6 +263,11 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
     req.authUser = row;
     next();
   } catch (error) {
+    const classified = classifyDatabaseError(error);
+    if (classified.status === 503) {
+      console.warn('Auth middleware database unavailable:', classified.message);
+      return res.status(503).json({ error: classified.message });
+    }
     console.error('Authentication middleware error:', error);
     return res.status(401).json({ error: 'Invalid or expired credentials.' });
   }

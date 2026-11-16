@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { and, count, eq, isNull, or } from 'drizzle-orm';
 import { Router, type Response } from 'express';
-import { getDb, isDatabaseConfigured } from '../../db/index.ts';
+import { classifyDatabaseError, getDb, isDatabaseConfigured } from '../../db/index.ts';
 import { inviteCodes, users } from '../../db/schema.ts';
 import {
   clearSessionCookie,
@@ -94,6 +94,9 @@ authRouter.post(
             .limit(1);
 
           if (!invite) {
+            if (Number(totalUsers) === 0 && !process.env.ADMIN_BOOTSTRAP_CODE) {
+              throw new Error('NO_BOOTSTRAP_CONFIG');
+            }
             throw new Error('INVALID_INVITE');
           }
         }
@@ -144,19 +147,26 @@ authRouter.post(
         return inserted;
       });
 
-      setSessionCookie(res, createdUser.id);
+      setSessionCookie(req, res, createdUser.id);
       return res.status(201).json({ user: createdUser });
     } catch (error) {
       if (error instanceof Error) {
         if (error.message === 'CONFLICT_USER') {
           return res.status(409).json({ error: 'Username or email is already registered.' });
         }
+        if (error.message === 'NO_BOOTSTRAP_CONFIG') {
+          return res.status(403).json({
+            error:
+              'No users or invite codes exist yet. Set ADMIN_BOOTSTRAP_CODE in Secrets to register the first admin account.',
+          });
+        }
         if (error.message === 'INVALID_INVITE') {
           return res.status(403).json({ error: 'Invite code is invalid or has already been used.' });
         }
       }
-      console.error('Registration error:', error);
-      return res.status(500).json({ error: 'Unable to complete registration.' });
+      const classified = classifyDatabaseError(error);
+      console.warn('Registration DB error:', classified.message);
+      return res.status(classified.status).json({ error: classified.message });
     }
   },
 );
@@ -187,7 +197,7 @@ authRouter.post(
         return res.status(401).json({ error: 'Invalid credentials.' });
       }
 
-      setSessionCookie(res, user.id);
+      setSessionCookie(req, res, user.id);
       return res.json({
         user: {
           id: user.id,
@@ -199,14 +209,15 @@ authRouter.post(
         },
       });
     } catch (error) {
-      console.error('Login error:', error);
-      return res.status(500).json({ error: 'Unable to sign in.' });
+      const classified = classifyDatabaseError(error);
+      console.warn('Login DB error:', classified.message);
+      return res.status(classified.status).json({ error: classified.message });
     }
   },
 );
 
-authRouter.post('/logout', (_req: AuthRequest, res: Response) => {
-  clearSessionCookie(res);
+authRouter.post('/logout', (req: AuthRequest, res: Response) => {
+  clearSessionCookie(req, res);
   res.json({ ok: true });
 });
 
@@ -235,8 +246,9 @@ authRouter.post(
 
       return res.json({ invite: consumed });
     } catch (error) {
-      console.error('Consume invite error:', error);
-      return res.status(500).json({ error: 'Failed to consume invite code.' });
+      const classified = classifyDatabaseError(error);
+      console.warn('Consume invite DB error:', classified.message);
+      return res.status(classified.status).json({ error: classified.message });
     }
   },
 );
@@ -264,8 +276,9 @@ authRouter.post(
 
       return res.status(201).json({ invite: created });
     } catch (error) {
-      console.error('Create invite error:', error);
-      return res.status(500).json({ error: 'Failed to generate invite code.' });
+      const classified = classifyDatabaseError(error);
+      console.warn('Create invite DB error:', classified.message);
+      return res.status(classified.status).json({ error: classified.message });
     }
   },
 );
