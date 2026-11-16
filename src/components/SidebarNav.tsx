@@ -1,4 +1,5 @@
 import {
+  Bookmark,
   Compass,
   Disc3,
   LogOut,
@@ -9,7 +10,8 @@ import {
   Users,
   X,
 } from 'lucide-react';
-import type { CrateSummary, NavSection } from '../store/playerStore';
+import type { NavSection } from '../store/playerStore';
+import type { HubCrate } from '../types/hub';
 import type { SessionUser } from './AuthGateModal';
 
 const NAV_ITEMS: { label: NavSection; icon: typeof Disc3 }[] = [
@@ -25,16 +27,20 @@ const FILTER_TAGS = ['all', 'downtempo', 'ambient-jazz', 'analog', 'vinyl-rip'];
 interface SidebarNavProps {
   activeNav: NavSection;
   activeCrateId: string | null;
+  bookmarksOnly: boolean;
   searchQuery: string;
   activeTag: string;
-  crates: CrateSummary[];
+  crates: HubCrate[];
   sessionUser: SessionUser | null;
   onSelectNav: (nav: NavSection) => void;
+  onSelectBookmarks: () => void;
   onSelectCrate: (crateId: string) => void;
   onCreateCrate: () => void;
+  onOpenShareTrack: () => void;
   onSearchChange: (q: string) => void;
   onTagChange: (tag: string) => void;
   onOpenAuth: () => void;
+  onOpenProfile: (username: string) => void;
   onLogout: () => void;
   onCloseMobile?: () => void;
 }
@@ -42,23 +48,27 @@ interface SidebarNavProps {
 export function SidebarNav({
   activeNav,
   activeCrateId,
+  bookmarksOnly,
   searchQuery,
   activeTag,
   crates,
   sessionUser,
   onSelectNav,
+  onSelectBookmarks,
   onSelectCrate,
   onCreateCrate,
+  onOpenShareTrack,
   onSearchChange,
   onTagChange,
   onOpenAuth,
+  onOpenProfile,
   onLogout,
   onCloseMobile,
 }: SidebarNavProps) {
   return (
     <div className="flex h-full flex-col justify-between bg-[#EFE9DE] text-[#1F1B18] border-r border-[#DDD5C7]">
-      <div className="p-5 space-y-6 overflow-y-auto">
-        <div className="flex items-center justify-between">
+      <div className="p-5 space-y-5 overflow-y-auto">
+        <div className="flex items-center justify-between gap-2">
           <button
             type="button"
             onClick={() => onSelectNav('Now Playing')}
@@ -66,16 +76,26 @@ export function SidebarNav({
           >
             SONA
           </button>
-          {onCloseMobile && (
+          <div className="flex items-center gap-2">
             <button
               type="button"
-              onClick={onCloseMobile}
-              className="lg:hidden p-1.5 text-[#5C534A] hover:text-[#1F1B18]"
-              aria-label="Close navigation menu"
+              onClick={onOpenShareTrack}
+              className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded-md bg-[#B84A2E] text-[11px] font-semibold text-[#FCF9F4] hover:bg-[#9E3D24] whitespace-nowrap shrink-0 cursor-pointer"
             >
-              <X className="w-5 h-5" />
+              <Plus className="w-3.5 h-3.5" />
+              <span>Share Track</span>
             </button>
-          )}
+            {onCloseMobile && (
+              <button
+                type="button"
+                onClick={onCloseMobile}
+                className="lg:hidden p-1.5 text-[#5C534A] hover:text-[#1F1B18]"
+                aria-label="Close navigation menu"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            )}
+          </div>
         </div>
 
         <div className="space-y-3">
@@ -114,7 +134,8 @@ export function SidebarNav({
 
         <nav aria-label="Primary navigation" className="space-y-1">
           {NAV_ITEMS.map(({ label, icon: Icon }) => {
-            const active = activeNav === label && !activeCrateId;
+            const active =
+              activeNav === label && !activeCrateId && !bookmarksOnly;
             return (
               <button
                 key={label}
@@ -131,6 +152,19 @@ export function SidebarNav({
               </button>
             );
           })}
+
+          <button
+            type="button"
+            onClick={onSelectBookmarks}
+            className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+              bookmarksOnly
+                ? 'bg-[#FCF9F4] text-[#B84A2E] font-semibold border border-[#DDD5C7]'
+                : 'text-[#5C534A] hover:text-[#1F1B18] hover:bg-[#FCF9F4]/60'
+            }`}
+          >
+            <Bookmark className="w-4 h-4 shrink-0" />
+            <span>Saved Bookmarks</span>
+          </button>
         </nav>
 
         <div className="border-t border-[#DDD5C7] pt-5 space-y-3">
@@ -162,9 +196,9 @@ export function SidebarNav({
                         : 'text-[#5C534A] hover:text-[#1F1B18]'
                     }`}
                   >
-                    <span className="truncate">{crate.name}</span>
+                    <span className="truncate">{crate.title}</span>
                     <span className="font-mono-tabular text-xs text-[#5C534A]">
-                      {crate.count}
+                      {crate.itemCount}
                     </span>
                   </button>
                 </li>
@@ -177,9 +211,13 @@ export function SidebarNav({
       <div className="border-t border-[#DDD5C7] px-5 py-3.5 flex items-center justify-between text-xs text-[#5C534A]">
         {sessionUser ? (
           <>
-            <span className="font-medium text-[#1F1B18] truncate">
+            <button
+              type="button"
+              onClick={() => onOpenProfile(sessionUser.username)}
+              className="font-medium text-[#1F1B18] hover:text-[#B84A2E] truncate cursor-pointer"
+            >
               @{sessionUser.username}
-            </span>
+            </button>
             <button
               type="button"
               onClick={onLogout}
