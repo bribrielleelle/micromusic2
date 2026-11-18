@@ -1,0 +1,470 @@
+{
+  "version": "1.0",
+  "title": "SONA Vibe Check",
+  "subtitle": "7 quick picks so we know what spins in your world before you join.",
+  "estimatedSeconds": 45,
+  "loadingMessage": "Reading your vibe… 🍜🎧",
+  "weights": {
+    "music": 2,
+    "food": 1,
+    "lifestyle": 1
+  },
+  "questions": [
+    {
+      "id": "q1_music_situation",
+      "category": "music",
+      "question": "It's 11:30 PM and the rain just started hitting the window. What's on?",
+      "options": [
+        {
+          "id": "q1_a",
+          "emoji": "🌙",
+          "label": "Moody synth-pop & nocturnal electronic",
+          "tags": ["genre:synth-pop", "genre:electronic", "mood:moody", "energy:low", "discovery:high"]
+        },
+        {
+          "id": "q1_b",
+          "emoji": "🎸",
+          "label": "Fuzzy indie rock & nostalgic shoegaze",
+          "tags": ["genre:indie", "genre:shoegaze", "mood:nostalgic", "energy:medium", "discovery:high"]
+        },
+        {
+          "id": "q1_c",
+          "emoji": "🎷",
+          "label": "Warm Rhodes jazz, neo-soul, or lo-fi beats",
+          "tags": ["genre:jazz", "genre:soul", "mood:chill", "energy:low", "discovery:medium"]
+        },
+        {
+          "id": "q1_d",
+          "emoji": "🔊",
+          "label": "Heavy basslines, UK garage, or club edits",
+          "tags": ["genre:electronic", "genre:garage", "mood:hyped", "energy:high", "discovery:high"]
+        }
+      ]
+    },
+    {
+      "id": "q2_food_latenight",
+      "category": "food",
+      "question": "Dream 1 AM late-night food order — no budget, no regrets:",
+      "options": [
+        {
+          "id": "q2_a",
+          "emoji": "🍜",
+          "label": "Steaming tonkotsu ramen with extra jammy egg",
+          "tags": ["mood:moody", "mood:chill", "discovery:high", "energy:low", "vibe:nocturnal"]
+        },
+        {
+          "id": "q2_b",
+          "emoji": "🍕",
+          "label": "Crispy corner-shop pepperoni slice, folded in half",
+          "tags": ["mood:nostalgic", "energy:high", "discovery:medium", "vibe:street"]
+        },
+        {
+          "id": "q2_c",
+          "emoji": "🥟",
+          "label": "Chili-oil dumplings & cold sesame noodles",
+          "tags": ["mood:hyped", "discovery:high", "energy:medium", "vibe:eclectic"]
+        },
+        {
+          "id": "q2_d",
+          "emoji": "🥐",
+          "label": "Warm butter croissant & herbal tea (civilized chaos)",
+          "tags": ["mood:chill", "energy:low", "vibe:cozy", "discovery:medium"]
+        }
+      ]
+    },
+    {
+      "id": "q3_lifestyle_commute",
+      "category": "lifestyle",
+      "question": "How are you getting across town on a Saturday afternoon?",
+      "options": [
+        {
+          "id": "q3_a",
+          "emoji": "🚇",
+          "label": "Window seat on the train, headphones glued on",
+          "tags": ["mood:moody", "mood:nostalgic", "energy:low", "vibe:nocturnal"]
+        },
+        {
+          "id": "q3_b",
+          "emoji": "🚲",
+          "label": "Biking fast through backstreets with one earbud in",
+          "tags": ["energy:high", "mood:hyped", "vibe:street", "discovery:high"]
+        },
+        {
+          "id": "q3_c",
+          "emoji": "🚶",
+          "label": "Aimless iced-coffee walk past vintage shops",
+          "tags": ["mood:chill", "vibe:cozy", "energy:low", "discovery:medium"]
+        },
+        {
+          "id": "q3_d",
+          "emoji": "🚗",
+          "label": "Windows down, aux cord strictly mine",
+          "tags": ["energy:high", "mood:nostalgic", "vibe:sunlit"]
+        }
+      ]
+    },
+    {
+      "id": "q4_music_discovery",
+      "category": "music",
+      "question": "You're picking one type of playlist you can't live without:",
+      "options": [
+        {
+          "id": "q4_a",
+          "emoji": "📼",
+          "label": "Rare B-sides, tape demos & 2,000-play SoundCloud gems",
+          "tags": ["discovery:high", "genre:electronic", "genre:indie", "mood:moody"]
+        },
+        {
+          "id": "q4_b",
+          "emoji": "☀️",
+          "label": "Sun-drenched indie pop, funk & feel-good grooves",
+          "tags": ["genre:indie", "genre:soul", "mood:sunlit", "energy:medium", "vibe:sunlit"]
+        },
+        {
+          "id": "q4_c",
+          "emoji": "🎹",
+          "label": "Ambient piano, vinyl jazz & instrumental textures",
+          "tags": ["genre:jazz", "genre:ambient", "mood:chill", "energy:low", "vibe:cozy"]
+        },
+        {
+          "id": "q4_d",
+          "emoji": "⚡",
+          "label": "High-tempo club tools, breakbeats & warehouse cuts",
+          "tags": ["genre:garage", "genre:electronic", "energy:high", "mood:hyped", "discovery:high"]
+        }
+      ]
+    },
+    {
+      "id": "q5_food_forever",
+      "category": "food",
+      "question": "If you could only eat ONE snack forever while digging through crates:",
+      "options": [
+        {
+          "id": "q5_a",
+          "emoji": "🥨",
+          "label": "Salted sourdough pretzels & dark chocolate",
+          "tags": ["vibe:cozy", "mood:chill", "energy:low"]
+        },
+        {
+          "id": "q5_b",
+          "emoji": "🌶️",
+          "label": "Extra-spicy kettle chips or chili mango",
+          "tags": ["energy:high", "mood:hyped", "vibe:street"]
+        },
+        {
+          "id": "q5_c",
+          "emoji": "🍓",
+          "label": "Fresh berries & iced matcha",
+          "tags": ["vibe:sunlit", "mood:sunlit", "energy:medium"]
+        },
+        {
+          "id": "q5_d",
+          "emoji": "🍙",
+          "label": "Spicy tuna onigiri from a tiny corner market",
+          "tags": ["discovery:high", "vibe:nocturnal", "mood:moody"]
+        }
+      ]
+    },
+    {
+      "id": "q6_lifestyle_unwind",
+      "category": "lifestyle",
+      "question": "Sunday morning with zero alarms — what's the move?",
+      "options": [
+        {
+          "id": "q6_a",
+          "emoji": "🪴",
+          "label": "Watering plants, pour-over coffee, spinning a full LP",
+          "tags": ["vibe:cozy", "mood:chill", "genre:jazz", "energy:low"]
+        },
+        {
+          "id": "q6_b",
+          "emoji": "🎞️",
+          "label": "Developing 35mm film & reorganizing saved tracks",
+          "tags": ["mood:nostalgic", "discovery:high", "genre:indie", "vibe:nocturnal"]
+        },
+        {
+          "id": "q6_c",
+          "emoji": "🏃",
+          "label": "Morning run followed by rooftop brunch with friends",
+          "tags": ["vibe:sunlit", "energy:high", "mood:sunlit"]
+        },
+        {
+          "id": "q6_d",
+          "emoji": "🛋️",
+          "label": "Still recovering from last night's 2 AM DJ set",
+          "tags": ["vibe:street", "mood:hyped", "genre:garage", "energy:high"]
+        }
+      ]
+    },
+    {
+      "id": "q7_music_cantlive",
+      "category": "music",
+      "question": "Which sound instantly gives you goosebumps in any track?",
+      "options": [
+        {
+          "id": "q7_a",
+          "emoji": "🎛️",
+          "label": "Detuned analog synths & reverb-soaked vocals",
+          "tags": ["genre:synth-pop", "genre:shoegaze", "mood:moody", "discovery:high"]
+        },
+        {
+          "id": "q7_b",
+          "emoji": "🥁",
+          "label": "Crisp breakbeats, sub-bass & chopped vocal samples",
+          "tags": ["genre:garage", "genre:electronic", "energy:high", "mood:hyped"]
+        },
+        {
+          "id": "q7_c",
+          "emoji": "🎺",
+          "label": "Warm horn sections, upright bass & vinyl crackle",
+          "tags": ["genre:jazz", "genre:soul", "mood:chill", "vibe:cozy"]
+        },
+        {
+          "id": "q7_d",
+          "emoji": "✨",
+          "label": "Shimmering jangly guitars & upbeat basslines",
+          "tags": ["genre:indie", "mood:sunlit", "vibe:sunlit", "energy:medium"]
+        }
+      ]
+    }
+  ],
+  "archetypes": [
+    {
+      "id": "midnight_ramen_explorer",
+      "name": "The Midnight Ramen Explorer",
+      "tagline": "Chasing deep cuts after dark",
+      "description": "You chase deep cuts after dark — drawn to moody analog synths, rain-soaked shoegaze, and tracks nobody else in the group chat has found yet.",
+      "shareText": "I got The Midnight Ramen Explorer on SONA — chasing deep cuts after dark. 🍜🎧",
+      "matchTags": [
+        "genre:synth-pop",
+        "genre:shoegaze",
+        "mood:moody",
+        "vibe:nocturnal",
+        "discovery:high"
+      ],
+      "feedTags": ["downtempo", "tape-loop", "electronic", "shoegaze"],
+      "artists": [
+        {
+          "name": "The Weeknd",
+          "mainstreamTier": 1,
+          "reason": "because you love nocturnal synth atmospheres and late-night melancholy"
+        },
+        {
+          "name": "Tame Impala",
+          "mainstreamTier": 2,
+          "reason": "because detuned analog textures and hazy grooves are your comfort zone"
+        },
+        {
+          "name": "Beach House",
+          "mainstreamTier": 3,
+          "reason": "because you melt into reverb-drenched dream-pop at midnight"
+        },
+        {
+          "name": "Chromatics",
+          "mainstreamTier": 4,
+          "reason": "because moody synth-pop built for rainy train rides hits every time"
+        },
+        {
+          "name": "Men I Trust",
+          "mainstreamTier": 5,
+          "reason": "because understated, velvety basslines keep your late nights moving"
+        },
+        {
+          "name": "Forss",
+          "mainstreamTier": 6,
+          "reason": "because rare downtempo tape loops and micro-samples fuel your crate digging"
+        }
+      ]
+    },
+    {
+      "id": "sunday_vinyl_botanist",
+      "name": "The Sunday Vinyl Botanist",
+      "tagline": "Slow mornings, warm pressings",
+      "description": "You treat music like a well-steeped ritual — favoring warm Rhodes chords, upright bass, and unhurried Sunday morning albums from start to finish.",
+      "shareText": "I got The Sunday Vinyl Botanist on SONA — slow mornings and warm pressings. 🪴🎧",
+      "matchTags": [
+        "genre:jazz",
+        "genre:soul",
+        "genre:ambient",
+        "mood:chill",
+        "energy:low",
+        "vibe:cozy"
+      ],
+      "feedTags": ["ambient-jazz", "rhodes", "late-night", "analog"],
+      "artists": [
+        {
+          "name": "Frank Ocean",
+          "mainstreamTier": 1,
+          "reason": "because intimate, Rhodes-backed storytelling hits close to home"
+        },
+        {
+          "name": "Anderson .Paak",
+          "mainstreamTier": 2,
+          "reason": "because warm neo-soul pocket and live percussion never miss"
+        },
+        {
+          "name": "BADBADNOTGOOD",
+          "mainstreamTier": 3,
+          "reason": "because modern jazz improvisation meets crate-digger sensibility"
+        },
+        {
+          "name": "Khruangbin",
+          "mainstreamTier": 4,
+          "reason": "because laid-back analog grooves turn any room into a sunlit lounge"
+        },
+        {
+          "name": "Alfa Mist",
+          "mainstreamTier": 5,
+          "reason": "because smoky piano chords and reflective jazz beats match your pace"
+        },
+        {
+          "name": "Kaito Takahashi",
+          "mainstreamTier": 6,
+          "reason": "because deep ambient-jazz live sessions keep your Sunday ritual sacred"
+        }
+      ]
+    },
+    {
+      "id": "neon_alley_selector",
+      "name": "The Neon Alley Selector",
+      "tagline": "High-voltage warehouse finds",
+      "description": "You live for crisp breakbeats, sub-heavy garage edits, and underground club weapons that make an entire room lock in at 2 AM.",
+      "shareText": "I got The Neon Alley Selector on SONA — crisp breakbeats and 2 AM club weapons. ⚡🎧",
+      "matchTags": [
+        "genre:garage",
+        "genre:electronic",
+        "energy:high",
+        "mood:hyped",
+        "vibe:street",
+        "discovery:high"
+      ],
+      "feedTags": ["vinyl-rip", "deep", "electronic", "downtempo"],
+      "artists": [
+        {
+          "name": "Disclosure",
+          "mainstreamTier": 1,
+          "reason": "because punchy UK garage drums and crisp basslines are in your DNA"
+        },
+        {
+          "name": "Fred again..",
+          "mainstreamTier": 2,
+          "reason": "because emotional vocal chops over euphoric club percussion hit hard"
+        },
+        {
+          "name": "KAYTRANADA",
+          "mainstreamTier": 3,
+          "reason": "because off-kilter bounce and slick electronic edits never leave rotation"
+        },
+        {
+          "name": "Jamie xx",
+          "mainstreamTier": 4,
+          "reason": "because nocturnal London warehouse energy feels like home"
+        },
+        {
+          "name": "Overmono",
+          "mainstreamTier": 5,
+          "reason": "because broken-beat pressure and sub-bass urgency keep you moving"
+        },
+        {
+          "name": "Devon Park",
+          "mainstreamTier": 6,
+          "reason": "because underground vinyl rips and deep oscillator dubs reward true diggers"
+        }
+      ]
+    },
+    {
+      "id": "sunlit_cassette_drifter",
+      "name": "The Sunlit Cassette Drifter",
+      "tagline": "Golden-hour riffs and open roads",
+      "description": "You curate for golden hour — balancing jangly indie guitars, warm nostalgia, and breezy feel-good melodies that belong on a road-trip tape.",
+      "shareText": "I got The Sunlit Cassette Drifter on SONA — golden-hour riffs and open roads. ☀️🎧",
+      "matchTags": [
+        "genre:indie",
+        "mood:sunlit",
+        "mood:nostalgic",
+        "vibe:sunlit",
+        "energy:medium"
+      ],
+      "feedTags": ["analog", "downtempo", "late-night"],
+      "artists": [
+        {
+          "name": "Vampire Weekend",
+          "mainstreamTier": 1,
+          "reason": "because bright, clever indie hooks bring effortless daytime energy"
+        },
+        {
+          "name": "Mac DeMarco",
+          "mainstreamTier": 2,
+          "reason": "because sun-warped tape chorus and laid-back guitar riffs match your mood"
+        },
+        {
+          "name": "Parcels",
+          "mainstreamTier": 3,
+          "reason": "because crisp funk basslines and golden-hour harmonies keep things buoyant"
+        },
+        {
+          "name": "Alvvays",
+          "mainstreamTier": 4,
+          "reason": "because bittersweet jangly guitars and shimmering melodies hit the sweet spot"
+        },
+        {
+          "name": "Mild High Club",
+          "mainstreamTier": 5,
+          "reason": "because hazy cassette-deck psychedelia pairs naturally with iced matcha walks"
+        },
+        {
+          "name": "Solene Vasseur",
+          "mainstreamTier": 6,
+          "reason": "because warm French-pop B-sides and analog reels fit your sunlit crates"
+        }
+      ]
+    },
+    {
+      "id": "analog_tape_archivist",
+      "name": "The Analog Tape Archivist",
+      "tagline": "Collector of rare pressings",
+      "description": "You're obsessed with the story behind the sound — digging past algorithms for 35mm-era aesthetics, dusty demos, and hyper-specific crate themes.",
+      "shareText": "I got The Analog Tape Archivist on SONA — digging past algorithms for rare pressings. 🎞️🎧",
+      "matchTags": [
+        "discovery:high",
+        "mood:nostalgic",
+        "genre:indie",
+        "genre:electronic",
+        "vibe:eclectic"
+      ],
+      "feedTags": ["tape-loop", "vinyl-rip", "analog", "ambient"],
+      "artists": [
+        {
+          "name": "Radiohead",
+          "mainstreamTier": 1,
+          "reason": "because boundary-pushing studio craft and layered textures keep you dissecting"
+        },
+        {
+          "name": "Bonobo",
+          "mainstreamTier": 2,
+          "reason": "because organic sample-based electronica bridges crate digging and chill vibes"
+        },
+        {
+          "name": "Four Tet",
+          "mainstreamTier": 3,
+          "reason": "because micro-edited folk loops and deep electronic cuts live in your library"
+        },
+        {
+          "name": "Caribou",
+          "mainstreamTier": 4,
+          "reason": "because warm psychedelic electronics feel hand-built for headphone listening"
+        },
+        {
+          "name": "Broadcast",
+          "mainstreamTier": 5,
+          "reason": "because vintage tape hiss and retro-futuristic melodies are peak crate gold"
+        },
+        {
+          "name": "Boards of Canada",
+          "mainstreamTier": 6,
+          "reason": "because nostalgic analog synths and mysterious tape artifacts are your north star"
+        }
+      ]
+    }
+  ]
+}

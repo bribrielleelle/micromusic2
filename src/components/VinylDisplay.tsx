@@ -1,27 +1,29 @@
-import type { PrototypeTrack } from '../design/tokens';
+import { formatDuration, type QueueTrack } from '../store/playerStore';
 
 interface VinylDisplayProps {
-  track: PrototypeTrack;
+  track: QueueTrack | null;
   isPlaying: boolean;
   onTogglePlay: () => void;
 }
 
 export function VinylDisplay({ track, isPlaying, onTogglePlay }: VinylDisplayProps) {
+  const accentColor = track?.coverAccent ?? '#B84A2E';
+  const artistLabel = track?.artistName ?? 'SONA Archive';
+
   return (
     <div className="flex flex-col items-center">
       <div className="relative w-60 h-60 xl:w-64 xl:h-64 flex items-center justify-center select-none">
-        {/* Turntable platter shadow */}
         <div
           className="absolute inset-2 rounded-full border border-[#DDD5C7] bg-[#EFE9DE] shadow-inner"
           aria-hidden="true"
         />
 
-        {/* Rotating vinyl disc */}
         <button
           type="button"
           onClick={onTogglePlay}
-          aria-label={isPlaying ? 'Pause decorative vinyl preview' : 'Play decorative vinyl preview'}
-          className={`relative w-52 h-52 xl:w-56 xl:h-56 rounded-full cursor-pointer focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#B84A2E] transition-transform duration-300 ${
+          disabled={!track}
+          aria-label={isPlaying ? 'Pause decorative vinyl' : 'Play decorative vinyl'}
+          className={`relative w-52 h-52 xl:w-56 xl:h-56 rounded-full cursor-pointer disabled:cursor-default focus-visible:outline-2 focus-visible:outline-offset-4 focus-visible:outline-[#B84A2E] transition-transform duration-300 ${
             isPlaying ? 'animate-vinyl-spin' : 'animate-vinyl-paused'
           }`}
           style={{
@@ -30,7 +32,6 @@ export function VinylDisplay({ track, isPlaying, onTogglePlay }: VinylDisplayPro
             boxShadow: '0 14px 32px -12px rgba(31, 27, 24, 0.45)',
           }}
         >
-          {/* Subtle specular groove sheen */}
           <div
             className="absolute inset-0 rounded-full opacity-25 pointer-events-none"
             style={{
@@ -39,22 +40,20 @@ export function VinylDisplay({ track, isPlaying, onTogglePlay }: VinylDisplayPro
             }}
           />
 
-          {/* Center pressed paper label */}
           <div
             className="absolute inset-1/2 -translate-x-1/2 -translate-y-1/2 w-20 h-20 rounded-full border border-[#1F1B18]/20 flex flex-col items-center justify-center p-2 text-center"
-            style={{ backgroundColor: track.coverAccent }}
+            style={{ backgroundColor: accentColor }}
           >
             <span className="font-display text-[10px] font-semibold tracking-wider text-[#FCF9F4] uppercase">
               SONA
             </span>
             <span className="mt-0.5 text-[8px] leading-tight text-[#FCF9F4]/90 line-clamp-2">
-              {track.artist}
+              {artistLabel}
             </span>
             <span className="mt-1 w-2.5 h-2.5 rounded-full bg-[#F7F3EC] border border-[#1F1B18]/40" />
           </div>
         </button>
 
-        {/* Decorative tonearm */}
         <div
           className={`pointer-events-none absolute -top-1 right-3 origin-top-right transition-transform duration-500 ease-out ${
             isPlaying ? 'rotate-[18deg]' : 'rotate-0'
@@ -70,16 +69,17 @@ export function VinylDisplay({ track, isPlaying, onTogglePlay }: VinylDisplayPro
         </div>
       </div>
 
-      {/* Caption clarifying ToS compliance */}
       <div className="mt-5 w-full border-t border-[#DDD5C7] pt-4 text-center">
         <p className="font-display text-base font-medium text-[#1F1B18] truncate">
-          {track.title}
+          {track ? track.title : 'Turntable Idle'}
         </p>
         <p className="mt-1 text-xs text-[#5C534A]">
-          {track.artist} · {track.provider}
+          {track
+            ? `${track.artistName} · ${track.provider === 'youtube' ? 'YouTube' : 'SoundCloud'} · ${formatDuration(track.durationSeconds)}`
+            : 'Select a track from the feed to spin'}
         </p>
         <p className="mt-3 text-[11px] leading-relaxed text-[#5C534A]">
-          Decorative turntable synced to playback state. Provider embed remains visible in the footer for ToS compliance.
+          Decorative turntable synced to playback state. The provider embed remains visible in the footer.
         </p>
       </div>
     </div>

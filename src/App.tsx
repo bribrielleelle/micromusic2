@@ -1,62 +1,223 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import {
   Bookmark,
-  Compass,
-  Disc3,
   Heart,
-  LogOut,
+  ListPlus,
   Menu,
+  MessageSquare,
   Pause,
   Play,
   Plus,
   Radio,
-  Search,
-  Settings,
-  SkipBack,
-  SkipForward,
-  TrendingUp,
-  Users,
-  Volume2,
+  RotateCcw,
+  Sparkles,
+  Trash2,
+  UserPlus,
   X,
 } from 'lucide-react';
 import {
-  PROTOTYPE_CRATES,
-  PROTOTYPE_TRACKS,
-  type PrototypeTrack,
-} from './design/tokens';
-import { VinylDisplay } from './components/VinylDisplay';
-import { DesignSpecView } from './components/DesignSpecView';
+  formatDuration,
+  INITIAL_TRACKS,
+  type NavSection,
+  usePlayerStore,
+} from './store/playerStore';
+import {
+  clearVibeProfile,
+  getArchetypeById,
+  loadVibeProfile,
+  saveVibeProfile,
+  type StoredVibeProfile,
+  type VibeArchetype,
+} from './store/vibeQuiz';
+import {
+  postToQueueTrack,
+  type CrateDetailResponse,
+  type FeedPost,
+  type HubCrate,
+} from './types/hub';
 import { AuthGateModal, type SessionUser } from './components/AuthGateModal';
+import { CreateCrateModal } from './components/CreateCrateModal';
+import { NowPlayingCard } from './components/NowPlayingCard';
+import { PersistentFooter } from './components/PersistentFooter';
+import { PostDetailModal } from './components/PostDetailModal';
+import { ProfileDrawer } from './components/ProfileDrawer';
+import { QueueDrawer } from './components/QueueDrawer';
+import { ShareTrackModal } from './components/ShareTrackModal';
+import { SidebarNav } from './components/SidebarNav';
+import { VibeQuizModal } from './components/VibeQuizModal';
+import { VinylDisplay } from './components/VinylDisplay';
 
-type NavSection = 'Now Playing' | 'Browse' | 'Communities' | 'Charts' | 'Settings';
-type PrototypeMode = 'wireframe' | 'spec';
-
-const NAV_ITEMS: { label: NavSection; icon: typeof Disc3 }[] = [
-  { label: 'Now Playing', icon: Disc3 },
-  { label: 'Browse', icon: Compass },
-  { label: 'Communities', icon: Users },
-  { label: 'Charts', icon: TrendingUp },
-  { label: 'Settings', icon: Settings },
-];
-
-const FILTER_TAGS = ['all', 'shoegaze', 'ambient-jazz', 'analog', 'vinyl-rip'];
+const FALLBACK_POSTS: FeedPost[] = INITIAL_TRACKS.map((trk, idx) => ({
+  id: trk.id,
+  userId: `seed-${idx}`,
+  mediaUrl: trk.mediaUrl,
+  provider: trk.provider,
+  title: trk.title,
+  artistName: trk.artistName,
+  thumbnailUrl: null,
+  durationSeconds: trk.durationSeconds,
+  tags: trk.tags,
+  viewCount: 12 + idx * 7,
+  isHidden: false,
+  createdAt: new Date(Date.now() - idx * 3600 * 1000).toISOString(),
+  author: {
+    id: `seed-${idx}`,
+    username: trk.curatorHandle.replace(/^@/, ''),
+    avatarUrl: null,
+  },
+  likeCount: 4 + idx,
+  bookmarkCount: 2 + idx,
+  commentCount: 0,
+  likedByViewer: idx === 0,
+  bookmarkedByViewer: idx === 1,
+}));
 
 export default function App() {
-  const [mode, setMode] = useState<PrototypeMode>('wireframe');
   const [activeNav, setActiveNav] = useState<NavSection>('Now Playing');
   const [activeCrateId, setActiveCrateId] = useState<string | null>(null);
+  const [activeCrateDetail, setActiveCrateDetail] =
+    useState<CrateDetailResponse | null>(null);
+  const [bookmarksOnly, setBookmarksOnly] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
   const [activeTag, setActiveTag] = useState('all');
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
 
-  const [currentTrackIndex, setCurrentTrackIndex] = useState(0);
-  const [isPlaying, setIsPlaying] = useState(true);
-  const [volume, setVolume] = useState(72);
-  const [likedIds, setLikedIds] = useState<string[]>(['trk-1']);
-  const [bookmarkedIds, setBookmarkedIds] = useState<string[]>(['trk-2']);
-  const [crates, setCrates] = useState(PROTOTYPE_CRATES);
+  const [databaseConnected, setDatabaseConnected] = useState(false);
+  const [feedPosts, setFeedPosts] = useState<FeedPost[]>(FALLBACK_POSTS);
+  const [nextCursor, setNextCursor] = useState<string | null>(null);
+  const [loadingFeed, setLoadingFeed] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [crates, setCrates] = useState<HubCrate[]>([]);
+  const [feedNotice, setFeedNotice] = useState<string | null>(null);
+
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalTab, setAuthModalTab] = useState<'login' | 'register'>('login');
+  const [shareModalOpen, setShareModalOpen] = useState(false);
+  const [createCrateOpen, setCreateCrateOpen] = useState(false);
+  const [selectedPost, setSelectedPost] = useState<FeedPost | null>(null);
+  const [profileTarget, setProfileTarget] = useState<string | null>(null);
+
+  const [vibeProfile, setVibeProfile] = useState<StoredVibeProfile | null>(() =>
+    loadVibeProfile(),
+  );
+  const [vibeQuizOpen, setVibeQuizOpen] = useState(false);
+  const [vibeQuizInitialArchetype, setVibeQuizInitialArchetype] =
+    useState<VibeArchetype | null>(null);
+  const [vibeBannerDismissed, setVibeBannerDismissed] = useState(false);
+
+  const vibeArchetype = useMemo(
+    () => getArchetypeById(vibeProfile?.archetypeId),
+    [vibeProfile],
+  );
+
+  const currentTrack = usePlayerStore((s) => s.currentTrack);
+  const queue = usePlayerStore((s) => s.queue);
+  const isPlaying = usePlayerStore((s) => s.isPlaying);
+  const playTrack = usePlayerStore((s) => s.playTrack);
+  const togglePlay = usePlayerStore((s) => s.togglePlay);
+  const enqueueTrack = usePlayerStore((s) => s.enqueueTrack);
+
+  const loadCrates = useCallback(async () => {
+    try {
+      const res = await fetch('/api/crates', { credentials: 'include' });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.databaseConfigured && Array.isArray(data.crates)) {
+        setCrates(data.crates);
+      }
+    } catch {
+      // Keep empty crate list if DB unreachable
+    }
+  }, []);
+
+  const loadFeed = useCallback(
+    async (cursor?: string | null) => {
+      if (cursor) {
+        setLoadingMore(true);
+      } else {
+        setLoadingFeed(true);
+      }
+      setFeedNotice(null);
+
+      try {
+        if (activeCrateId) {
+          const res = await fetch(
+            `/api/crates/${encodeURIComponent(activeCrateId)}`,
+            { credentials: 'include' },
+          );
+          if (res.ok) {
+            const detail = (await res.json()) as CrateDetailResponse;
+            setActiveCrateDetail(detail);
+            setFeedPosts(detail.items.map((item) => item.post));
+            setNextCursor(null);
+            setDatabaseConnected(true);
+          } else {
+            const err = await res.json().catch(() => ({}));
+            setFeedNotice(err?.error || 'Unable to load crate.');
+            setFeedPosts([]);
+          }
+          return;
+        }
+
+        setActiveCrateDetail(null);
+
+        const isSearching =
+          activeTag !== 'all' || searchQuery.trim().length > 0;
+
+        let url = '/api/posts?limit=12';
+        if (bookmarksOnly) {
+          url = '/api/posts?limit=12&bookmarked=true';
+        } else if (isSearching) {
+          const params = new URLSearchParams();
+          if (activeTag !== 'all') params.set('tag', activeTag);
+          if (searchQuery.trim()) params.set('q', searchQuery.trim());
+          url = `/api/search?${params.toString()}`;
+        }
+
+        if (cursor) {
+          url += `${url.includes('?') ? '&' : '?'}cursor=${encodeURIComponent(cursor)}`;
+        }
+
+        const res = await fetch(url, { credentials: 'include' });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          if (res.status === 401 && bookmarksOnly) {
+            setFeedPosts([]);
+            setFeedNotice('Sign in to view your saved bookmarks.');
+            return;
+          }
+          if (!cursor && !databaseConnected) {
+            setFeedPosts(FALLBACK_POSTS);
+          }
+          if (err?.error) setFeedNotice(err.error);
+          return;
+        }
+
+        const data = await res.json();
+        if (data?.databaseConfigured) {
+          setDatabaseConnected(true);
+          const incoming = Array.isArray(data.items)
+            ? (data.items as FeedPost[])
+            : [];
+          setFeedPosts((prev) => (cursor ? [...prev, ...incoming] : incoming));
+          setNextCursor(data.nextCursor ?? null);
+        } else {
+          setDatabaseConnected(false);
+          setFeedPosts(FALLBACK_POSTS);
+          setNextCursor(null);
+        }
+      } catch {
+        if (!cursor && !databaseConnected) {
+          setFeedPosts(FALLBACK_POSTS);
+        }
+      } finally {
+        setLoadingFeed(false);
+        setLoadingMore(false);
+      }
+    },
+    [activeCrateId, activeTag, searchQuery, bookmarksOnly, databaseConnected],
+  );
 
   useEffect(() => {
     fetch('/api/auth/me', { credentials: 'include' })
@@ -64,286 +225,368 @@ export default function App() {
       .then((data) => {
         if (data?.user) {
           setSessionUser(data.user);
+        } else if (!loadVibeProfile()) {
+          setVibeQuizInitialArchetype(null);
+          setVibeQuizOpen(true);
         }
       })
-      .catch(() => {});
-  }, []);
+      .catch(() => {
+        if (!loadVibeProfile()) {
+          setVibeQuizInitialArchetype(null);
+          setVibeQuizOpen(true);
+        }
+      });
+    loadCrates();
+  }, [loadCrates]);
 
-  const handleLogout = async () => {
-    await fetch('/api/auth/logout', { method: 'POST', credentials: 'include' }).catch(() => {});
-    setSessionUser(null);
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      loadFeed(null);
+    }, 180);
+    return () => window.clearTimeout(timer);
+  }, [loadFeed]);
+
+  const openAuthModal = (tab: 'login' | 'register' = 'login') => {
+    setAuthModalTab(tab);
+    setAuthModalOpen(true);
   };
 
-  const currentTrack: PrototypeTrack = PROTOTYPE_TRACKS[currentTrackIndex];
-  const upNextTrack: PrototypeTrack =
-    PROTOTYPE_TRACKS[(currentTrackIndex + 1) % PROTOTYPE_TRACKS.length];
+  const handleQuizSkip = () => {
+    if (!vibeProfile?.archetypeId) {
+      const skipped: StoredVibeProfile = {
+        completedAt: null,
+        skipped: true,
+        archetypeId: null,
+        answers: {},
+        tagScores: {},
+      };
+      saveVibeProfile(skipped);
+      setVibeProfile(skipped);
+    }
+    setVibeQuizOpen(false);
+  };
 
-  const filteredTracks = useMemo(() => {
-    return PROTOTYPE_TRACKS.filter((track) => {
-      const matchesTag = activeTag === 'all' || track.tags.includes(activeTag);
-      const q = searchQuery.trim().toLowerCase();
-      const matchesQuery =
-        !q ||
-        track.title.toLowerCase().includes(q) ||
-        track.artist.toLowerCase().includes(q) ||
-        track.tags.some((t) => t.toLowerCase().includes(q));
-      const matchesCrate =
-        !activeCrateId ||
-        track.crateName === crates.find((c) => c.id === activeCrateId)?.name;
-      return matchesTag && matchesQuery && matchesCrate;
+  const handleQuizComplete = (profile: StoredVibeProfile) => {
+    saveVibeProfile(profile);
+    setVibeProfile(profile);
+    setVibeBannerDismissed(false);
+  };
+
+  const handleExploreFeed = () => {
+    setVibeQuizOpen(false);
+    setActiveNav('Now Playing');
+    setActiveCrateId(null);
+    setBookmarksOnly(false);
+    setActiveTag('all');
+    setSearchQuery('');
+    setVibeBannerDismissed(false);
+  };
+
+  const handleProceedToSignUp = () => {
+    setVibeQuizOpen(false);
+    openAuthModal('register');
+  };
+
+  const handleOpenQuizRetake = () => {
+    setVibeQuizInitialArchetype(null);
+    setVibeQuizOpen(true);
+  };
+
+  const handleOpenSavedReveal = () => {
+    if (!vibeArchetype) return;
+    setVibeQuizInitialArchetype(vibeArchetype);
+    setVibeQuizOpen(true);
+  };
+
+  const handleResetVibeProfile = () => {
+    clearVibeProfile();
+    setVibeProfile(null);
+  };
+
+  const handleLogout = async () => {
+    await fetch('/api/auth/logout', {
+      method: 'POST',
+      credentials: 'include',
+    }).catch(() => {});
+    setSessionUser(null);
+    loadFeed(null);
+  };
+
+  const displayedPosts = useMemo(() => {
+    const baseList = databaseConnected
+      ? feedPosts
+      : feedPosts.filter((post) => {
+          const matchesTag = activeTag === 'all' || post.tags.includes(activeTag);
+          const q = searchQuery.trim().toLowerCase();
+          const matchesQuery =
+            !q ||
+            post.title.toLowerCase().includes(q) ||
+            post.artistName.toLowerCase().includes(q) ||
+            post.tags.some((t) => t.toLowerCase().includes(q));
+          const matchesBookmarks = !bookmarksOnly || post.bookmarkedByViewer;
+          return matchesTag && matchesQuery && matchesBookmarks;
+        });
+
+    if (
+      vibeArchetype &&
+      activeTag === 'all' &&
+      !searchQuery.trim() &&
+      !activeCrateId &&
+      !bookmarksOnly
+    ) {
+      return [...baseList].sort((a, b) => {
+        const matchA = a.tags.filter((t) => vibeArchetype.feedTags.includes(t)).length;
+        const matchB = b.tags.filter((t) => vibeArchetype.feedTags.includes(t)).length;
+        return matchB - matchA;
+      });
+    }
+
+    return baseList;
+  }, [
+    databaseConnected,
+    feedPosts,
+    activeTag,
+    searchQuery,
+    bookmarksOnly,
+    activeCrateId,
+    vibeArchetype,
+  ]);
+
+  const likedIds = useMemo(
+    () => feedPosts.filter((p) => p.likedByViewer).map((p) => p.id),
+    [feedPosts],
+  );
+  const bookmarkedIds = useMemo(
+    () => feedPosts.filter((p) => p.bookmarkedByViewer).map((p) => p.id),
+    [feedPosts],
+  );
+
+  const togglePostLike = async (post: FeedPost) => {
+    if (!databaseConnected) {
+      setFeedPosts((prev) =>
+        prev.map((p) =>
+          p.id === post.id
+            ? {
+                ...p,
+                likedByViewer: !p.likedByViewer,
+                likeCount: p.likedByViewer ? Math.max(0, p.likeCount - 1) : p.likeCount + 1,
+              }
+            : p,
+        ),
+      );
+      return;
+    }
+
+    if (!sessionUser) {
+      openAuthModal('login');
+      return;
+    }
+
+    const method = post.likedByViewer ? 'DELETE' : 'POST';
+    const res = await fetch('/api/likes', {
+      method,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postId: post.id }),
     });
-  }, [activeTag, searchQuery, activeCrateId, crates]);
+    if (res.ok) {
+      const data = await res.json();
+      setFeedPosts((prev) =>
+        prev.map((p) =>
+          p.id === post.id
+            ? {
+                ...p,
+                likedByViewer: data.liked,
+                likeCount: data.likeCount,
+              }
+            : p,
+        ),
+      );
+      setSelectedPost((prev) =>
+        prev && prev.id === post.id
+          ? { ...prev, likedByViewer: data.liked, likeCount: data.likeCount }
+          : prev,
+      );
+    }
+  };
+
+  const togglePostBookmark = async (post: FeedPost) => {
+    if (!databaseConnected) {
+      setFeedPosts((prev) =>
+        prev.map((p) =>
+          p.id === post.id
+            ? {
+                ...p,
+                bookmarkedByViewer: !p.bookmarkedByViewer,
+                bookmarkCount: p.bookmarkedByViewer
+                  ? Math.max(0, p.bookmarkCount - 1)
+                  : p.bookmarkCount + 1,
+              }
+            : p,
+        ),
+      );
+      return;
+    }
+
+    if (!sessionUser) {
+      openAuthModal('login');
+      return;
+    }
+
+    const method = post.bookmarkedByViewer ? 'DELETE' : 'POST';
+    const res = await fetch('/api/bookmarks', {
+      method,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ postId: post.id }),
+    });
+    if (res.ok) {
+      const data = await res.json();
+      setFeedPosts((prev) =>
+        prev.map((p) =>
+          p.id === post.id
+            ? {
+                ...p,
+                bookmarkedByViewer: data.bookmarked,
+                bookmarkCount: data.bookmarkCount,
+              }
+            : p,
+        ),
+      );
+      setSelectedPost((prev) =>
+        prev && prev.id === post.id
+          ? {
+              ...prev,
+              bookmarkedByViewer: data.bookmarked,
+              bookmarkCount: data.bookmarkCount,
+            }
+          : prev,
+      );
+    }
+  };
+
+  const handleAddToCrate = async (crateId: string, postId: string) => {
+    const res = await fetch('/api/crates/items', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ crateId, postId }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      throw new Error(data?.error || 'Unable to add track to crate.');
+    }
+    loadCrates();
+  };
+
+  const handleRemoveFromCrate = async (crateId: string, postId: string) => {
+    const res = await fetch('/api/crates/items', {
+      method: 'DELETE',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ crateId, postId }),
+    });
+    if (res.ok) {
+      setFeedPosts((prev) => prev.filter((p) => p.id !== postId));
+      loadCrates();
+    }
+  };
 
   const handleSelectNav = (nav: NavSection) => {
     setActiveNav(nav);
     setActiveCrateId(null);
-    setMode('wireframe');
+    setBookmarksOnly(false);
+    setMobileMenuOpen(false);
+  };
+
+  const handleSelectBookmarks = () => {
+    setBookmarksOnly(true);
+    setActiveCrateId(null);
+    setActiveNav('Browse');
     setMobileMenuOpen(false);
   };
 
   const handleSelectCrate = (crateId: string) => {
     setActiveCrateId(crateId);
-    setActiveNav('Browse');
-    setMode('wireframe');
-    setMobileMenuOpen(false);
-  };
-
-  const handleCreateDraftCrate = () => {
-    const nextNum = crates.length + 1;
-    const newCrate = {
-      id: `crt-${nextNum}`,
-      name: `Untitled Crate ${nextNum}`,
-      count: 0,
-    };
-    setCrates((prev) => [...prev, newCrate]);
-    setActiveCrateId(newCrate.id);
+    setBookmarksOnly(false);
     setActiveNav('Browse');
     setMobileMenuOpen(false);
   };
 
-  const handleSkip = (direction: 1 | -1) => {
-    setCurrentTrackIndex(
-      (prev) => (prev + direction + PROTOTYPE_TRACKS.length) % PROTOTYPE_TRACKS.length,
-    );
-    setIsPlaying(true);
+  const handleRequireAuthAction = (onAuthorized: () => void) => {
+    if (!sessionUser) {
+      openAuthModal('login');
+      return;
+    }
+    onAuthorized();
   };
 
-  const toggleLike = (id: string) => {
-    setLikedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
-    );
-  };
+  const isSettingsView =
+    activeNav === 'Settings' && !activeCrateId && !bookmarksOnly;
 
-  const toggleBookmark = (id: string) => {
-    setBookmarkedIds((prev) =>
-      prev.includes(id) ? prev.filter((item) => item !== id) : [...prev, id],
-    );
-  };
+  const feedTitle = activeCrateDetail
+    ? activeCrateDetail.crate.title
+    : bookmarksOnly
+      ? 'Saved Bookmarks'
+      : activeNav === 'Now Playing'
+        ? 'Discovery Feed'
+        : activeNav;
 
-  const sidebarContent = (
-    <div className="flex h-full flex-col justify-between bg-[#EFE9DE] text-[#1F1B18] border-r border-[#DDD5C7]">
-      <div className="p-5 space-y-6 overflow-y-auto">
-        {/* Brand Wordmark */}
-        <div className="flex items-center justify-between">
-          <button
-            type="button"
-            onClick={() => handleSelectNav('Now Playing')}
-            className="font-display text-2xl font-semibold tracking-tight text-[#1F1B18] whitespace-nowrap shrink-0 cursor-pointer"
-          >
-            SONA
-          </button>
-          <button
-            type="button"
-            onClick={() => setMobileMenuOpen(false)}
-            className="lg:hidden p-1.5 text-[#5C534A] hover:text-[#1F1B18]"
-            aria-label="Close navigation menu"
-          >
-            <X className="w-5 h-5" />
-          </button>
-        </div>
-
-        {/* Global Search */}
-        <div className="space-y-3">
-          <label className="relative block">
-            <span className="sr-only">Search tracks and fandom tags</span>
-            <Search className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-[#5C534A]" />
-            <input
-              type="search"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Search tags or artists..."
-              className="w-full rounded-md border border-[#DDD5C7] bg-[#FCF9F4] pl-9 pr-3 py-2 text-xs text-[#1F1B18] placeholder:text-[#5C534A]/70 focus:outline-none focus:border-[#B84A2E]"
-            />
-          </label>
-
-          {/* Tag Filters (interactive filter buttons) */}
-          <div className="flex flex-wrap gap-1.5">
-            {FILTER_TAGS.map((tag) => {
-              const selected = activeTag === tag;
-              return (
-                <button
-                  key={tag}
-                  type="button"
-                  onClick={() => setActiveTag(tag)}
-                  className={`px-2.5 py-1 text-[11px] font-medium rounded transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-                    selected
-                      ? 'bg-[#1F1B18] text-[#FCF9F4]'
-                      : 'bg-[#FCF9F4] text-[#5C534A] border border-[#DDD5C7] hover:text-[#1F1B18]'
-                  }`}
-                >
-                  {tag === 'all' ? 'All Tags' : `#${tag}`}
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Primary Navigation */}
-        <nav aria-label="Primary navigation" className="space-y-1">
-          {NAV_ITEMS.map(({ label, icon: Icon }) => {
-            const active = mode === 'wireframe' && activeNav === label && !activeCrateId;
-            return (
-              <button
-                key={label}
-                type="button"
-                onClick={() => handleSelectNav(label)}
-                className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors whitespace-nowrap cursor-pointer ${
-                  active
-                    ? 'bg-[#FCF9F4] text-[#B84A2E] font-semibold border border-[#DDD5C7]'
-                    : 'text-[#5C534A] hover:text-[#1F1B18] hover:bg-[#FCF9F4]/60'
-                }`}
-              >
-                <Icon className="w-4 h-4 shrink-0" />
-                <span>{label}</span>
-              </button>
-            );
-          })}
-        </nav>
-
-        {/* Dedicated CRATES section */}
-        <div className="border-t border-[#DDD5C7] pt-5 space-y-3">
-          <div className="flex items-center justify-between gap-2">
-            <h2 className="text-xs font-semibold tracking-wider text-[#5C534A]">
-              CRATES
-            </h2>
-            <button
-              type="button"
-              onClick={handleCreateDraftCrate}
-              className="inline-flex items-center gap-1 text-xs font-medium text-[#B84A2E] hover:text-[#9E3D24] whitespace-nowrap shrink-0 cursor-pointer"
-            >
-              <Plus className="w-3.5 h-3.5" />
-              <span>New playlist</span>
-            </button>
-          </div>
-
-          <ul className="space-y-1">
-            {crates.map((crate) => {
-              const selected = mode === 'wireframe' && activeCrateId === crate.id;
-              return (
-                <li key={crate.id}>
-                  <button
-                    type="button"
-                    onClick={() => handleSelectCrate(crate.id)}
-                    className={`w-full flex items-center justify-between gap-2 px-3 py-1.5 text-sm rounded-md transition-colors cursor-pointer ${
-                      selected
-                        ? 'bg-[#FCF9F4] text-[#1F1B18] font-medium border border-[#DDD5C7]'
-                        : 'text-[#5C534A] hover:text-[#1F1B18]'
-                    }`}
-                  >
-                    <span className="truncate">{crate.name}</span>
-                    <span className="font-mono-tabular text-xs text-[#5C534A]">
-                      {crate.count}
-                    </span>
-                  </button>
-                </li>
-              );
-            })}
-          </ul>
-        </div>
-      </div>
-
-      {/* Invite-only member session footer */}
-      <div className="border-t border-[#DDD5C7] px-5 py-3.5 flex items-center justify-between text-xs text-[#5C534A]">
-        {sessionUser ? (
-          <>
-            <span className="font-medium text-[#1F1B18] truncate">
-              @{sessionUser.username}
-            </span>
-            <button
-              type="button"
-              onClick={handleLogout}
-              className="inline-flex items-center gap-1 text-[#5C534A] hover:text-[#B84A2E] cursor-pointer"
-              aria-label="Sign out"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-              <span>Sign out</span>
-            </button>
-          </>
-        ) : (
-          <>
-            <span>Invite-only hub</span>
-            <button
-              type="button"
-              onClick={() => setAuthModalOpen(true)}
-              className="font-semibold text-[#B84A2E] hover:text-[#9E3D24] cursor-pointer"
-            >
-              Sign in
-            </button>
-          </>
-        )}
-      </div>
-    </div>
+  const canManageCrate = Boolean(
+    activeCrateDetail &&
+      sessionUser &&
+      (sessionUser.role === 'admin' ||
+        sessionUser.id === activeCrateDetail.crate.ownerId),
   );
 
   return (
     <div className="min-h-screen flex flex-col bg-[#F7F3EC] text-[#1F1B18]">
-      {/* Mobile / Phase 1 Top Bar */}
-      <header className="sticky top-0 z-30 flex items-center justify-between gap-4 border-b border-[#DDD5C7] bg-[#F7F3EC]/95 backdrop-blur-sm px-4 lg:px-6 py-3">
+      {/* Mobile Header (< lg) */}
+      <header className="sticky top-0 z-30 flex lg:hidden items-center justify-between gap-4 border-b border-[#DDD5C7] bg-[#F7F3EC]/95 backdrop-blur-sm px-4 py-3">
         <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => setMobileMenuOpen(true)}
-            className="lg:hidden p-2 -ml-1 rounded-md border border-[#DDD5C7] bg-[#FCF9F4] text-[#1F1B18]"
+            className="p-2 -ml-1 rounded-md border border-[#DDD5C7] bg-[#FCF9F4] text-[#1F1B18]"
             aria-label="Open navigation drawer"
           >
             <Menu className="w-4 h-4" />
           </button>
-          <span className="lg:hidden font-display text-xl font-semibold text-[#1F1B18] whitespace-nowrap">
+          <span className="font-display text-xl font-semibold text-[#1F1B18] whitespace-nowrap">
             SONA
-          </span>
-          <span className="hidden lg:inline text-xs font-medium text-[#5C534A] whitespace-nowrap">
-            Phase 1 Prototype · Warm Vintage Three-Pane Layout
           </span>
         </div>
 
-        {/* Phase 1 View Switcher */}
-        <div className="flex items-center gap-1 p-1 rounded-md border border-[#DDD5C7] bg-[#EFE9DE]">
+        <div className="flex items-center gap-3">
           <button
             type="button"
-            onClick={() => setMode('wireframe')}
-            className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              mode === 'wireframe'
-                ? 'bg-[#FCF9F4] text-[#1F1B18] shadow-xs'
-                : 'text-[#5C534A] hover:text-[#1F1B18]'
-            }`}
+            onClick={() => handleRequireAuthAction(() => setShareModalOpen(true))}
+            className="inline-flex items-center gap-1 px-2.5 py-1.5 rounded bg-[#B84A2E] text-[11px] font-semibold text-[#FCF9F4]"
           >
-            Three-Pane Wireframe
+            <Plus className="w-3.5 h-3.5" />
+            <span>Share</span>
           </button>
-          <button
-            type="button"
-            onClick={() => setMode('spec')}
-            className={`px-3 py-1.5 text-xs font-medium rounded transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
-              mode === 'spec'
-                ? 'bg-[#FCF9F4] text-[#1F1B18] shadow-xs'
-                : 'text-[#5C534A] hover:text-[#1F1B18]'
-            }`}
-          >
-            Design System &amp; Breakpoints
-          </button>
+          {sessionUser ? (
+            <button
+              type="button"
+              onClick={() => setProfileTarget(sessionUser.username)}
+              className="text-xs font-medium text-[#1F1B18]"
+            >
+              @{sessionUser.username}
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => openAuthModal('login')}
+              className="text-xs font-semibold text-[#B84A2E] hover:text-[#9E3D24]"
+            >
+              Sign in
+            </button>
+          )}
         </div>
       </header>
 
-      {/* Mobile Drawer Overlay (< lg) */}
+      {/* Mobile Sidebar Drawer (< lg) */}
       {mobileMenuOpen && (
         <div className="fixed inset-0 z-50 flex lg:hidden">
           <div
@@ -352,364 +595,645 @@ export default function App() {
             aria-hidden="true"
           />
           <aside className="relative z-10 w-72 max-w-[85vw] h-full">
-            {sidebarContent}
-          </aside>
-        </div>
-      )}
-
-      {/* Main Workspace Area */}
-      {mode === 'spec' ? (
-        <main className="flex-1 pb-28 lg:pb-36">
-          <DesignSpecView />
-        </main>
-      ) : (
-        <div className="flex-1 flex min-h-0 pb-24 lg:pb-36">
-          {/* Pane 1: Left Sidebar (Desktop lg+) */}
-          <aside className="hidden lg:block w-64 shrink-0">
-            {sidebarContent}
-          </aside>
-
-          {/* Pane 2: Center Dashboard / Feed */}
-          <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-8 py-6 space-y-8">
-            {/* Floating Now Playing Card */}
-            <section
-              aria-label="Now Playing"
-              className="rounded-xl border border-[#DDD5C7] bg-[#FCF9F4] p-5 sm:p-6 shadow-sm"
-            >
-              <div className="flex flex-col sm:flex-row gap-5 items-start sm:items-center">
-                {/* Track Sleeve Art */}
-                <div
-                  className="w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded-lg border border-[#DDD5C7] flex flex-col justify-between p-3 text-[#FCF9F4]"
-                  style={{ backgroundColor: currentTrack.coverTone }}
-                >
-                  <span className="font-mono-tabular text-[10px] uppercase tracking-wider opacity-80">
-                    {currentTrack.provider}
-                  </span>
-                  <Radio className="w-5 h-5 opacity-80" />
-                </div>
-
-                {/* Track Metadata & Controls */}
-                <div className="flex-1 min-w-0 w-full space-y-3">
-                  <div>
-                    <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#5C534A]">
-                      <span>Now Playing</span>
-                      <span aria-hidden="true">·</span>
-                      <span>Curated by {currentTrack.curator}</span>
-                      <span aria-hidden="true">·</span>
-                      <span>{currentTrack.crateName}</span>
-                    </div>
-                    <h1 className="mt-1 font-display text-2xl font-semibold text-[#1F1B18] text-balance">
-                      {currentTrack.title}
-                    </h1>
-                    <p className="text-sm text-[#5C534A]">{currentTrack.artist}</p>
-                  </div>
-
-                  {/* Unboxed tags separated by typographic middots */}
-                  <p className="text-xs text-[#5C534A]">
-                    {currentTrack.tags.map((tag, idx) => (
-                      <span key={tag}>
-                        {idx > 0 && <span className="mx-1.5" aria-hidden="true">·</span>}
-                        <span>#{tag}</span>
-                      </span>
-                    ))}
-                  </p>
-
-                  {/* Scrubber & Transport Controls */}
-                  <div className="pt-1 space-y-2">
-                    <div className="flex items-center gap-3">
-                      <span className="font-mono-tabular text-xs text-[#5C534A]">01:42</span>
-                      <div className="relative flex-1 h-1.5 rounded-full bg-[#EFE9DE] overflow-hidden">
-                        <div className="h-full w-2/5 bg-[#B84A2E] rounded-full" />
-                      </div>
-                      <span className="font-mono-tabular text-xs text-[#5C534A]">
-                        {currentTrack.duration}
-                      </span>
-                    </div>
-
-                    <div className="flex items-center justify-between pt-1">
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => handleSkip(-1)}
-                          className="p-2 rounded-md border border-[#DDD5C7] bg-[#F7F3EC] text-[#1F1B18] hover:bg-[#EFE9DE] cursor-pointer"
-                          aria-label="Previous track"
-                        >
-                          <SkipBack className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => setIsPlaying((prev) => !prev)}
-                          className="inline-flex items-center gap-2 px-4 py-2 rounded-md bg-[#B84A2E] text-[#FCF9F4] text-xs font-semibold hover:bg-[#9E3D24] transition-colors cursor-pointer"
-                        >
-                          {isPlaying ? (
-                            <>
-                              <Pause className="w-3.5 h-3.5" />
-                              <span>Pause</span>
-                            </>
-                          ) : (
-                            <>
-                              <Play className="w-3.5 h-3.5" />
-                              <span>Play</span>
-                            </>
-                          )}
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => handleSkip(1)}
-                          className="p-2 rounded-md border border-[#DDD5C7] bg-[#F7F3EC] text-[#1F1B18] hover:bg-[#EFE9DE] cursor-pointer"
-                          aria-label="Next track"
-                        >
-                          <SkipForward className="w-4 h-4" />
-                        </button>
-                      </div>
-
-                      <div className="flex items-center gap-2">
-                        <button
-                          type="button"
-                          onClick={() => toggleLike(currentTrack.id)}
-                          aria-label="Like track"
-                          className={`p-2 rounded-md border border-[#DDD5C7] transition-colors cursor-pointer ${
-                            likedIds.includes(currentTrack.id)
-                              ? 'bg-[#B84A2E]/10 text-[#B84A2E] border-[#B84A2E]/30'
-                              : 'bg-[#F7F3EC] text-[#5C534A] hover:text-[#1F1B18]'
-                          }`}
-                        >
-                          <Heart className="w-4 h-4" />
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => toggleBookmark(currentTrack.id)}
-                          aria-label="Bookmark track"
-                          className={`p-2 rounded-md border border-[#DDD5C7] transition-colors cursor-pointer ${
-                            bookmarkedIds.includes(currentTrack.id)
-                              ? 'bg-[#C68B3C]/15 text-[#9A6721] border-[#C68B3C]/40'
-                              : 'bg-[#F7F3EC] text-[#5C534A] hover:text-[#1F1B18]'
-                          }`}
-                        >
-                          <Bookmark className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Embedded Up Next Preview Row */}
-              <div className="mt-5 pt-4 border-t border-[#DDD5C7] flex items-center justify-between gap-4">
-                <div className="min-w-0">
-                  <span className="text-xs font-semibold text-[#5C534A]">Up Next</span>
-                  <div className="flex items-center gap-2 text-sm text-[#1F1B18] truncate">
-                    <button
-                      type="button"
-                      onClick={() => handleSkip(1)}
-                      className="font-medium hover:text-[#B84A2E] truncate cursor-pointer"
-                    >
-                      {upNextTrack.title}
-                    </button>
-                    <span className="text-[#5C534A]" aria-hidden="true">·</span>
-                    <span className="text-[#5C534A] truncate">{upNextTrack.artist}</span>
-                  </div>
-                </div>
-                <span className="font-mono-tabular text-xs text-[#5C534A] shrink-0">
-                  {upNextTrack.duration}
-                </span>
-              </div>
-            </section>
-
-            {/* Discovery Masonry Feed / Crate View */}
-            <section className="space-y-4">
-              <div className="flex items-baseline justify-between gap-4 border-b border-[#DDD5C7] pb-3">
-                <div>
-                  <h2 className="font-display text-xl font-semibold text-[#1F1B18]">
-                    {activeCrateId
-                      ? crates.find((c) => c.id === activeCrateId)?.name
-                      : activeNav === 'Now Playing'
-                        ? 'Discovery Feed'
-                        : activeNav}
-                  </h2>
-                  <p className="text-xs text-[#5C534A]">
-                    Curated SoundCloud and YouTube pressings from the community
-                  </p>
-                </div>
-                <span className="font-mono-tabular text-xs text-[#5C534A]">
-                  {filteredTracks.length} tracks
-                </span>
-              </div>
-
-              {filteredTracks.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-[#DDD5C7] bg-[#FCF9F4] py-12 px-6 text-center">
-                  <p className="font-display text-lg text-[#1F1B18]">
-                    {activeCrateId ? 'This crate is empty.' : 'No tracks found.'}
-                  </p>
-                  <p className="mt-1 text-xs text-[#5C534A]">
-                    {activeCrateId
-                      ? 'Add SoundCloud or YouTube links to start curating this crate.'
-                      : 'Clear your tag filter or search query to view all curated tracks.'}
-                  </p>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                  {filteredTracks.map((track, idx) => {
-                    const isCurrent = track.id === currentTrack.id;
-                    return (
-                      <article
-                        key={track.id}
-                        className={`rounded-lg border p-4 bg-[#FCF9F4] transition-colors flex flex-col justify-between gap-4 ${
-                          isCurrent ? 'border-[#B84A2E]' : 'border-[#DDD5C7]'
-                        }`}
-                      >
-                        <div className="flex items-start gap-3.5">
-                          <button
-                            type="button"
-                            onClick={() => {
-                              const realIdx = PROTOTYPE_TRACKS.findIndex(
-                                (item) => item.id === track.id,
-                              );
-                              if (realIdx !== -1) {
-                                setCurrentTrackIndex(realIdx);
-                                setIsPlaying(true);
-                              }
-                            }}
-                            className="w-14 h-14 shrink-0 rounded border border-[#DDD5C7] flex items-center justify-center text-[#FCF9F4] cursor-pointer"
-                            style={{ backgroundColor: track.coverTone }}
-                            aria-label={`Play ${track.title}`}
-                          >
-                            {isCurrent && isPlaying ? (
-                              <Pause className="w-5 h-5" />
-                            ) : (
-                              <Play className="w-5 h-5" />
-                            )}
-                          </button>
-
-                          <div className="min-w-0 flex-1">
-                            <h3 className="font-display text-base font-medium text-[#1F1B18] leading-snug">
-                              {track.title}
-                            </h3>
-                            <p className="text-xs text-[#5C534A] mt-0.5">{track.artist}</p>
-                            <p className="mt-2 text-[11px] text-[#5C534A]">
-                              <span>{track.curator}</span>
-                              <span className="mx-1.5" aria-hidden="true">·</span>
-                              <span>{track.provider}</span>
-                              <span className="mx-1.5" aria-hidden="true">·</span>
-                              <span className="font-mono-tabular">{track.duration}</span>
-                            </p>
-                          </div>
-                        </div>
-
-                        <div className="flex items-center justify-between border-t border-[#DDD5C7]/70 pt-3 text-xs text-[#5C534A]">
-                          <span className="truncate">
-                            {track.tags.map((t) => `#${t}`).join(' · ')}
-                          </span>
-                          <span className="font-mono-tabular text-[11px] shrink-0">
-                            0{idx + 1}
-                          </span>
-                        </div>
-                      </article>
-                    );
-                  })}
-                </div>
-              )}
-            </section>
-          </main>
-
-          {/* Pane 3: Interactive Hero Element (Right, lg+ only) */}
-          <aside className="hidden lg:flex w-80 xl:w-[340px] shrink-0 border-l border-[#DDD5C7] bg-[#F7F3EC] p-6 pb-48 flex-col justify-center">
-            <VinylDisplay
-              track={currentTrack}
-              isPlaying={isPlaying}
-              onTogglePlay={() => setIsPlaying((prev) => !prev)}
+            <SidebarNav
+              activeNav={activeNav}
+              activeCrateId={activeCrateId}
+              bookmarksOnly={bookmarksOnly}
+              searchQuery={searchQuery}
+              activeTag={activeTag}
+              crates={crates}
+              sessionUser={sessionUser}
+              onSelectNav={handleSelectNav}
+              onSelectBookmarks={handleSelectBookmarks}
+              onSelectCrate={handleSelectCrate}
+              onCreateCrate={() =>
+                handleRequireAuthAction(() => setCreateCrateOpen(true))
+              }
+              onOpenShareTrack={() =>
+                handleRequireAuthAction(() => setShareModalOpen(true))
+              }
+              onSearchChange={setSearchQuery}
+              onTagChange={setActiveTag}
+              onOpenAuth={() => {
+                setMobileMenuOpen(false);
+                openAuthModal('login');
+              }}
+              onOpenProfile={(username) => {
+                setMobileMenuOpen(false);
+                setProfileTarget(username);
+              }}
+              onLogout={handleLogout}
+              onCloseMobile={() => setMobileMenuOpen(false)}
             />
           </aside>
         </div>
       )}
 
-      {/* Persistent Footer / Status Bar */}
-      <footer className="fixed bottom-0 inset-x-0 z-40 border-t border-[#DDD5C7] bg-[#EFE9DE]/95 backdrop-blur-sm">
-        <div className="mx-auto flex items-center justify-between gap-4 px-4 lg:px-6 py-2.5">
-          {/* Condensed track info */}
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-semibold text-[#1F1B18] truncate">
-              {currentTrack.title}
-            </p>
-            <p className="text-xs text-[#5C534A] truncate">
-              {currentTrack.artist} · {currentTrack.provider}
-            </p>
+      {/* Three-Pane Workspace */}
+      <div className="flex-1 flex min-h-0 pb-24 lg:pb-36">
+        {/* Pane 1: Left Sidebar (Desktop lg+) */}
+        <aside className="hidden lg:block w-64 shrink-0">
+          <div className="sticky top-0 h-screen pb-16">
+            <SidebarNav
+              activeNav={activeNav}
+              activeCrateId={activeCrateId}
+              bookmarksOnly={bookmarksOnly}
+              searchQuery={searchQuery}
+              activeTag={activeTag}
+              crates={crates}
+              sessionUser={sessionUser}
+              onSelectNav={handleSelectNav}
+              onSelectBookmarks={handleSelectBookmarks}
+              onSelectCrate={handleSelectCrate}
+              onCreateCrate={() =>
+                handleRequireAuthAction(() => setCreateCrateOpen(true))
+              }
+              onOpenShareTrack={() =>
+                handleRequireAuthAction(() => setShareModalOpen(true))
+              }
+              onSearchChange={setSearchQuery}
+              onTagChange={setActiveTag}
+              onOpenAuth={() => openAuthModal('login')}
+              onOpenProfile={(username) => setProfileTarget(username)}
+              onLogout={handleLogout}
+            />
           </div>
+        </aside>
 
-          {/* Global Transport Controls */}
-          <div className="flex items-center gap-2 shrink-0">
-            <button
-              type="button"
-              onClick={() => handleSkip(-1)}
-              className="p-2 text-[#5C534A] hover:text-[#1F1B18] cursor-pointer"
-              aria-label="Previous track"
-            >
-              <SkipBack className="w-4 h-4" />
-            </button>
-            <button
-              type="button"
-              onClick={() => setIsPlaying((prev) => !prev)}
-              className="w-9 h-9 rounded-full bg-[#B84A2E] text-[#FCF9F4] flex items-center justify-center hover:bg-[#9E3D24] cursor-pointer"
-              aria-label={isPlaying ? 'Pause' : 'Play'}
-            >
-              {isPlaying ? <Pause className="w-4 h-4" /> : <Play className="w-4 h-4 ml-0.5" />}
-            </button>
-            <button
-              type="button"
-              onClick={() => handleSkip(1)}
-              className="p-2 text-[#5C534A] hover:text-[#1F1B18] cursor-pointer"
-              aria-label="Next track"
-            >
-              <SkipForward className="w-4 h-4" />
-            </button>
-          </div>
+        {/* Pane 2: Center Main Dashboard / Masonry Discovery Feed */}
+        <main className="flex-1 min-w-0 px-4 sm:px-6 lg:px-8 py-6 space-y-8">
+          <NowPlayingCard
+            likedIds={likedIds}
+            bookmarkedIds={bookmarkedIds}
+            onToggleLike={(id) => {
+              const found = feedPosts.find((p) => p.id === id);
+              if (found) togglePostLike(found);
+            }}
+            onToggleBookmark={(id) => {
+              const found = feedPosts.find((p) => p.id === id);
+              if (found) togglePostBookmark(found);
+            }}
+          />
 
-          {/* Master Volume & ToS-Compliant 200x200 Embed Slot (Desktop lg+) */}
-          <div className="hidden lg:flex items-center gap-5 shrink-0">
-            <label className="flex items-center gap-2 text-xs text-[#5C534A]">
-              <Volume2 className="w-4 h-4" />
-              <span className="sr-only">Master volume</span>
-              <input
-                type="range"
-                min={0}
-                max={100}
-                value={volume}
-                onChange={(e) => setVolume(Number(e.target.value))}
-                className="w-24 accent-[#B84A2E] cursor-pointer"
-              />
-              <span className="font-mono-tabular w-7 text-right">{volume}%</span>
-            </label>
+          {isSettingsView ? (
+            <section className="space-y-6">
+              <div className="border-b border-[#DDD5C7] pb-3">
+                <h2 className="font-display text-xl font-semibold text-[#1F1B18]">
+                  Settings &amp; Taste Profile
+                </h2>
+                <p className="text-xs text-[#5C534A]">
+                  Tune your listener archetype, matched artists, and SONA account access.
+                </p>
+              </div>
 
-            {/* Visible dimmed 200x200px embed dock per Spec Section 3 */}
-            <div className="relative w-[200px] h-10 shrink-0">
-              <div
-                className="absolute bottom-0 right-0 w-[200px] h-[200px] rounded-lg border border-[#DDD5C7] bg-[#1F1B18]/85 text-[#FCF9F4]/85 p-3 flex flex-col justify-between opacity-80 shadow-md"
-                title="ToS-compliant SoundCloud / YouTube visible iframe container (200x200px)"
-              >
-                <div className="flex items-center justify-between text-[10px] font-mono-tabular uppercase tracking-wide text-[#FCF9F4]/70">
-                  <span>{currentTrack.provider}</span>
-                  <span>200×200</span>
+              {/* Taste Profile / Retake Quiz Card */}
+              <div className="rounded-xl border border-[#DDD5C7] bg-[#FCF9F4] p-6 space-y-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="space-y-1 max-w-xl">
+                    <p className="text-xs font-semibold text-[#B84A2E]">
+                      Vibe Quiz Profile
+                    </p>
+                    <h3 className="font-display text-2xl font-semibold text-[#1F1B18]">
+                      {vibeArchetype
+                        ? vibeArchetype.name
+                        : 'No taste profile saved yet'}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-[#5C534A] leading-relaxed">
+                      {vibeArchetype
+                        ? vibeArchetype.description
+                        : 'Answer 7 quick questions across music, late-night foods, and daily rituals (~45 seconds) to get a custom archetype, artist recommendations, and a tuned feed.'}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {vibeArchetype && (
+                      <button
+                        type="button"
+                        onClick={handleOpenSavedReveal}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-[#DDD5C7] bg-[#F7F3EC] text-xs font-semibold text-[#1F1B18] hover:border-[#B84A2E] cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-[#B84A2E]" />
+                        <span>View Taste Reveal</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleOpenQuizRetake}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-[#B84A2E] text-xs font-semibold text-[#FCF9F4] hover:bg-[#9E3D24] cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>{vibeArchetype ? 'Retake Vibe Quiz' : 'Take Vibe Quiz'}</span>
+                    </button>
+                  </div>
                 </div>
-                <div className="text-center space-y-1">
-                  <Radio className="w-6 h-6 mx-auto opacity-70" />
-                  <p className="text-[11px] font-medium truncate">{currentTrack.title}</p>
-                  <p className="text-[10px] text-[#FCF9F4]/60">
-                    ToS-compliant embed slot
+
+                {vibeArchetype && (
+                  <div className="border-t border-[#DDD5C7] pt-4 space-y-3">
+                    <div className="flex items-center justify-between text-xs text-[#5C534A]">
+                      <span className="font-medium text-[#1F1B18]">
+                        Matched Artists (Mainstream → Deep Cuts)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleResetVibeProfile}
+                        className="text-xs text-[#5C534A] hover:text-[#B84A2E] cursor-pointer"
+                      >
+                        Clear saved taste profile
+                      </button>
+                    </div>
+                    <ol className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {vibeArchetype.artists.map((artist, idx) => (
+                        <li
+                          key={artist.name}
+                          className="rounded-lg border border-[#DDD5C7] bg-[#F7F3EC] px-3.5 py-2.5 flex items-start gap-2.5"
+                        >
+                          <span className="font-mono-tabular text-[11px] font-semibold text-[#B84A2E] pt-0.5">
+                            0{idx + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-[#1F1B18]">
+                              {artist.name}
+                            </p>
+                            <p className="text-[11px] text-[#5C534A] leading-snug">
+                              {artist.reason}
+                            </p>
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+              </div>
+
+              {/* Account & Invite Access Card */}
+              <div className="rounded-xl border border-[#DDD5C7] bg-[#FCF9F4] p-6 flex flex-wrap items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-[#5C534A]">
+                    Member Account
+                  </p>
+                  {sessionUser ? (
+                    <>
+                      <h3 className="font-display text-lg font-semibold text-[#1F1B18]">
+                        @{sessionUser.username}
+                      </h3>
+                      <p className="text-xs text-[#5C534A]">
+                        {sessionUser.email}
+                        <span className="mx-1.5" aria-hidden="true">·</span>
+                        <span>Role: {sessionUser.role}</span>
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="font-display text-lg font-semibold text-[#1F1B18]">
+                        Browsing as Guest
+                      </h3>
+                      <p className="text-xs text-[#5C534A]">
+                        Join SONA with an invite code to share tracks, comment, and build crates.
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                {sessionUser ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setProfileTarget(sessionUser.username)}
+                      className="px-3.5 py-2 rounded-md border border-[#DDD5C7] bg-[#F7F3EC] text-xs font-semibold text-[#1F1B18] hover:border-[#B84A2E] cursor-pointer"
+                    >
+                      View Profile
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="px-3.5 py-2 rounded-md border border-[#DDD5C7] text-xs font-medium text-[#5C534A] hover:text-[#B84A2E] cursor-pointer"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openAuthModal('login')}
+                      className="px-3.5 py-2 rounded-md border border-[#DDD5C7] bg-[#F7F3EC] text-xs font-semibold text-[#1F1B18] hover:border-[#B84A2E] cursor-pointer"
+                    >
+                      Sign In
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openAuthModal('register')}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-[#B84A2E] text-xs font-semibold text-[#FCF9F4] hover:bg-[#9E3D24] cursor-pointer"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>Join with Invite</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </section>
+          ) : (
+            <section className="space-y-4">
+              {!vibeBannerDismissed && !activeCrateId && !bookmarksOnly && (
+                vibeArchetype ? (
+                  <div className="rounded-xl border border-[#DDD5C7] bg-[#FCF9F4] p-4 flex flex-wrap items-center justify-between gap-4">
+                    <div className="space-y-1 min-w-0">
+                      <p className="text-[11px] font-semibold text-[#B84A2E]">
+                        Tuned for {vibeArchetype.name}
+                      </p>
+                      <p className="text-xs text-[#5C534A]">
+                        Prioritizing{' '}
+                        <span className="font-medium text-[#1F1B18]">
+                          {vibeArchetype.artists
+                            .slice(0, 3)
+                            .map((a) => a.name)
+                            .join(', ')}
+                        </span>{' '}
+                        vibes and{' '}
+                        {vibeArchetype.feedTags.map((t) => `#${t}`).join(' · ')}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleOpenSavedReveal}
+                        className="px-3 py-1.5 rounded-md border border-[#DDD5C7] bg-[#F7F3EC] text-xs font-medium text-[#1F1B18] hover:border-[#B84A2E] cursor-pointer"
+                      >
+                        View Reveal
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleOpenQuizRetake}
+                        className="px-3 py-1.5 rounded-md border border-[#DDD5C7] text-xs font-medium text-[#5C534A] hover:text-[#1F1B18] cursor-pointer"
+                      >
+                        Retake
+                      </button>
+                      {!sessionUser && (
+                        <button
+                          type="button"
+                          onClick={() => openAuthModal('register')}
+                          className="px-3 py-1.5 rounded-md bg-[#B84A2E] text-xs font-semibold text-[#FCF9F4] hover:bg-[#9E3D24] cursor-pointer"
+                        >
+                          Sign Up
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setVibeBannerDismissed(true)}
+                        aria-label="Dismiss vibe summary"
+                        className="p-1 text-[#5C534A] hover:text-[#1F1B18] cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  !sessionUser && (
+                    <div className="rounded-xl border border-[#DDD5C7] bg-[#FCF9F4] px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs text-[#5C534A]">
+                        Want tailored artist &amp; track picks before joining? Take the 45-second Vibe Quiz.
+                      </p>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={handleOpenQuizRetake}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#B84A2E] text-xs font-semibold text-[#FCF9F4] hover:bg-[#9E3D24] cursor-pointer"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Take Vibe Quiz</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setVibeBannerDismissed(true)}
+                          aria-label="Dismiss vibe quiz prompt"
+                          className="p-1 text-[#5C534A] hover:text-[#1F1B18] cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                )
+              )}
+
+              <div className="flex items-baseline justify-between gap-4 border-b border-[#DDD5C7] pb-3">
+                <div>
+                  <h2 className="font-display text-xl font-semibold text-[#1F1B18]">
+                    {feedTitle}
+                  </h2>
+                  <p className="text-xs text-[#5C534A]">
+                    {activeCrateDetail
+                      ? activeCrateDetail.crate.description ||
+                        `Curated by @${activeCrateDetail.crate.ownerUsername}`
+                      : 'Curated SoundCloud and YouTube pressings from the community'}
                   </p>
                 </div>
-                <div className="h-1 w-full rounded bg-[#FCF9F4]/20 overflow-hidden">
-                  <div className="h-full w-2/5 bg-[#B84A2E]" />
-                </div>
+                <span className="font-mono-tabular text-xs text-[#5C534A]">
+                  {displayedPosts.length} tracks
+                </span>
               </div>
-            </div>
+
+              {feedNotice && (
+                <p className="rounded-md border border-[#DDD5C7] bg-[#FCF9F4] px-4 py-2.5 text-xs text-[#5C534A]">
+                  {feedNotice}
+                </p>
+              )}
+
+            {/* Skeleton Loaders (Spec Section 7) */}
+            {loadingFeed ? (
+              <div className="columns-1 md:columns-2 gap-4 space-y-4">
+                {[0, 1, 2, 3].map((idx) => (
+                  <div
+                    key={idx}
+                    className="break-inside-avoid rounded-lg border border-[#DDD5C7] bg-[#FCF9F4] p-4 space-y-3"
+                  >
+                    <div
+                      className={`w-full rounded bg-[#EFE9DE] animate-pulse ${
+                        idx % 2 === 0 ? 'h-44' : 'h-32'
+                      }`}
+                    />
+                    <div className="h-4 w-3/4 rounded bg-[#EFE9DE] animate-pulse" />
+                    <div className="h-3 w-1/2 rounded bg-[#EFE9DE] animate-pulse" />
+                  </div>
+                ))}
+              </div>
+            ) : displayedPosts.length === 0 ? (
+              /* Spec Section 7 Empty States */
+              <div className="rounded-lg border border-dashed border-[#DDD5C7] bg-[#FCF9F4] py-12 px-6 text-center">
+                <p className="font-display text-lg text-[#1F1B18]">
+                  {activeCrateId ? 'This crate is empty.' : 'No tracks found.'}
+                </p>
+                <p className="mt-1 text-xs text-[#5C534A]">
+                  {activeCrateId
+                    ? 'Open any track in the feed to add it to this crate.'
+                    : 'Share a SoundCloud or YouTube link, or adjust your tag filters.'}
+                </p>
+              </div>
+            ) : (
+              <>
+                {/* Masonry Discovery Grid */}
+                <div className="columns-1 md:columns-2 gap-4 space-y-4">
+                  {displayedPosts.map((post, idx) => {
+                    const isCurrent = currentTrack?.id === post.id;
+                    const isQueued = queue.some((q) => q.id === post.id);
+                    const queueTrack = postToQueueTrack(post, feedTitle);
+
+                    return (
+                      <article
+                        key={post.id}
+                        className={`break-inside-avoid rounded-lg border bg-[#FCF9F4] overflow-hidden transition-colors ${
+                          isCurrent ? 'border-[#B84A2E]' : 'border-[#DDD5C7]'
+                        }`}
+                      >
+                        {/* Artwork Header with Zero-Broken-Image Fallback */}
+                        <div
+                          className={`relative w-full overflow-hidden border-b border-[#DDD5C7] flex items-center justify-center text-[#FCF9F4] ${
+                            idx % 2 === 0 ? 'aspect-video' : 'aspect-[4/3]'
+                          }`}
+                          style={{ backgroundColor: queueTrack.coverTone }}
+                        >
+                          {post.thumbnailUrl ? (
+                            <img
+                              src={post.thumbnailUrl}
+                              alt={`${post.title} cover artwork`}
+                              referrerPolicy="no-referrer"
+                              className="w-full h-full object-cover"
+                            />
+                          ) : (
+                            <Radio className="w-8 h-8 opacity-75" />
+                          )}
+                          <button
+                            type="button"
+                            onClick={() =>
+                              isCurrent ? togglePlay() : playTrack(queueTrack)
+                            }
+                            aria-label={
+                              isCurrent && isPlaying
+                                ? `Pause ${post.title}`
+                                : `Play ${post.title}`
+                            }
+                            className="absolute bottom-3 right-3 w-10 h-10 rounded-full bg-[#B84A2E] text-[#FCF9F4] flex items-center justify-center shadow-md hover:bg-[#9E3D24] cursor-pointer"
+                          >
+                            {isCurrent && isPlaying ? (
+                              <Pause className="w-4 h-4" />
+                            ) : (
+                              <Play className="w-4 h-4 ml-0.5" />
+                            )}
+                          </button>
+                        </div>
+
+                        <div className="p-4 space-y-3">
+                          <div>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedPost(post)}
+                              className="text-left font-display text-base font-semibold text-[#1F1B18] hover:text-[#B84A2E] leading-snug cursor-pointer"
+                            >
+                              {post.title}
+                            </button>
+                            <p className="text-xs text-[#5C534A] mt-0.5">
+                              {post.artistName}
+                            </p>
+                          </div>
+
+                          <p className="text-[11px] text-[#5C534A]">
+                            <button
+                              type="button"
+                              onClick={() => setProfileTarget(post.author.username)}
+                              className="font-medium text-[#1F1B18] hover:text-[#B84A2E] cursor-pointer"
+                            >
+                              @{post.author.username}
+                            </button>
+                            <span className="mx-1.5" aria-hidden="true">·</span>
+                            <span>
+                              {post.provider === 'youtube' ? 'YouTube' : 'SoundCloud'}
+                            </span>
+                            <span className="mx-1.5" aria-hidden="true">·</span>
+                            <span className="font-mono-tabular">
+                              {formatDuration(post.durationSeconds)}
+                            </span>
+                          </p>
+
+                          {post.tags.length > 0 && (
+                            <p className="text-xs text-[#5C534A] truncate">
+                              {post.tags.map((t) => `#${t}`).join(' · ')}
+                            </p>
+                          )}
+
+                          <div className="flex items-center justify-between gap-2 border-t border-[#DDD5C7]/70 pt-3">
+                            <div className="flex items-center gap-2">
+                              <button
+                                type="button"
+                                onClick={() => togglePostLike(post)}
+                                aria-label="Like track"
+                                className={`inline-flex items-center gap-1 text-xs cursor-pointer ${
+                                  post.likedByViewer
+                                    ? 'text-[#B84A2E] font-medium'
+                                    : 'text-[#5C534A] hover:text-[#1F1B18]'
+                                }`}
+                              >
+                                <Heart className="w-3.5 h-3.5" />
+                                <span className="font-mono-tabular">
+                                  {post.likeCount}
+                                </span>
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => togglePostBookmark(post)}
+                                aria-label="Bookmark track"
+                                className={`inline-flex items-center gap-1 text-xs cursor-pointer ${
+                                  post.bookmarkedByViewer
+                                    ? 'text-[#9A6721] font-medium'
+                                    : 'text-[#5C534A] hover:text-[#1F1B18]'
+                                }`}
+                              >
+                                <Bookmark className="w-3.5 h-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setSelectedPost(post)}
+                                aria-label="Open comments"
+                                className="inline-flex items-center gap-1 text-xs text-[#5C534A] hover:text-[#1F1B18] cursor-pointer"
+                              >
+                                <MessageSquare className="w-3.5 h-3.5" />
+                                <span className="font-mono-tabular">
+                                  {post.commentCount}
+                                </span>
+                              </button>
+                            </div>
+
+                            <div className="flex items-center gap-1.5">
+                              {canManageCrate && activeCrateId && (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    handleRemoveFromCrate(activeCrateId, post.id)
+                                  }
+                                  aria-label="Remove from crate"
+                                  className="p-1.5 rounded border border-[#DDD5C7] text-[#5C534A] hover:text-[#B84A2E] cursor-pointer"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+                              )}
+                              <button
+                                type="button"
+                                disabled={isCurrent || isQueued}
+                                onClick={() => enqueueTrack(queueTrack)}
+                                className="inline-flex items-center gap-1 px-2.5 py-1 rounded border border-[#DDD5C7] bg-[#F7F3EC] text-[11px] font-medium text-[#1F1B18] hover:border-[#B84A2E] hover:text-[#B84A2E] disabled:opacity-50 disabled:cursor-default shrink-0 cursor-pointer"
+                              >
+                                <ListPlus className="w-3.5 h-3.5" />
+                                <span>
+                                  {isCurrent
+                                    ? 'Playing'
+                                    : isQueued
+                                      ? 'Queued'
+                                      : 'Queue'}
+                                </span>
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+
+                {nextCursor && (
+                  <div className="pt-2 text-center">
+                    <button
+                      type="button"
+                      disabled={loadingMore}
+                      onClick={() => loadFeed(nextCursor)}
+                      className="px-5 py-2 rounded-md border border-[#DDD5C7] bg-[#FCF9F4] text-xs font-semibold text-[#1F1B18] hover:border-[#B84A2E] disabled:opacity-50 cursor-pointer"
+                    >
+                      {loadingMore ? 'Loading more...' : 'Load more tracks'}
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </section>
+          )}
+        </main>
+
+        {/* Pane 3: Interactive Decorative Vinyl Hero (Right, lg+ only) */}
+        <aside className="hidden lg:flex w-80 xl:w-[340px] shrink-0 border-l border-[#DDD5C7] bg-[#F7F3EC] p-6 pb-48 flex-col justify-center">
+          <div className="sticky top-8">
+            <VinylDisplay
+              track={currentTrack}
+              isPlaying={isPlaying}
+              onTogglePlay={togglePlay}
+            />
           </div>
-        </div>
-      </footer>
+        </aside>
+      </div>
+
+      <PersistentFooter />
+      <QueueDrawer />
+
+      <VibeQuizModal
+        isOpen={vibeQuizOpen}
+        recommendedPool={feedPosts}
+        initialArchetype={vibeQuizInitialArchetype}
+        isSignedIn={Boolean(sessionUser)}
+        onSkip={handleQuizSkip}
+        onComplete={handleQuizComplete}
+        onProceedToSignUp={handleProceedToSignUp}
+        onExploreFeed={handleExploreFeed}
+      />
 
       <AuthGateModal
         isOpen={authModalOpen}
+        initialTab={authModalTab}
         onClose={() => setAuthModalOpen(false)}
-        onAuthenticated={(user) => setSessionUser(user)}
+        onAuthenticated={(user) => {
+          setSessionUser(user);
+          loadFeed(null);
+          loadCrates();
+        }}
+      />
+
+      <ShareTrackModal
+        isOpen={shareModalOpen}
+        crates={crates}
+        onClose={() => setShareModalOpen(false)}
+        onCreated={(newPost) => {
+          setFeedPosts((prev) => [newPost, ...prev]);
+          loadCrates();
+        }}
+      />
+
+      <CreateCrateModal
+        isOpen={createCrateOpen}
+        onClose={() => setCreateCrateOpen(false)}
+        onCreated={(newCrate) => {
+          setCrates((prev) => [newCrate, ...prev]);
+          handleSelectCrate(newCrate.id);
+        }}
+      />
+
+      <PostDetailModal
+        post={selectedPost}
+        crates={crates}
+        sessionUser={sessionUser}
+        onClose={() => setSelectedPost(null)}
+        onToggleLike={togglePostLike}
+        onToggleBookmark={togglePostBookmark}
+        onAddToCrate={handleAddToCrate}
+        onOpenProfile={(username) => {
+          setSelectedPost(null);
+          setProfileTarget(username);
+        }}
+        onPostRemoved={(postId) => {
+          setFeedPosts((prev) => prev.filter((p) => p.id !== postId));
+        }}
+      />
+
+      <ProfileDrawer
+        targetUser={profileTarget}
+        sessionUser={sessionUser}
+        onClose={() => setProfileTarget(null)}
+        onSelectCrate={(crateId) => handleSelectCrate(crateId)}
       />
     </div>
   );
