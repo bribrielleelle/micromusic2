@@ -9,7 +9,11 @@ import {
   Play,
   Plus,
   Radio,
+  RotateCcw,
+  Sparkles,
   Trash2,
+  UserPlus,
+  X,
 } from 'lucide-react';
 import {
   formatDuration,
@@ -17,6 +21,14 @@ import {
   type NavSection,
   usePlayerStore,
 } from './store/playerStore';
+import {
+  clearVibeProfile,
+  getArchetypeById,
+  loadVibeProfile,
+  saveVibeProfile,
+  type StoredVibeProfile,
+  type VibeArchetype,
+} from './store/vibeQuiz';
 import {
   postToQueueTrack,
   type CrateDetailResponse,
@@ -32,6 +44,7 @@ import { ProfileDrawer } from './components/ProfileDrawer';
 import { QueueDrawer } from './components/QueueDrawer';
 import { ShareTrackModal } from './components/ShareTrackModal';
 import { SidebarNav } from './components/SidebarNav';
+import { VibeQuizModal } from './components/VibeQuizModal';
 import { VinylDisplay } from './components/VinylDisplay';
 
 const FALLBACK_POSTS: FeedPost[] = INITIAL_TRACKS.map((trk, idx) => ({
@@ -79,10 +92,24 @@ export default function App() {
 
   const [sessionUser, setSessionUser] = useState<SessionUser | null>(null);
   const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [authModalTab, setAuthModalTab] = useState<'login' | 'register'>('login');
   const [shareModalOpen, setShareModalOpen] = useState(false);
   const [createCrateOpen, setCreateCrateOpen] = useState(false);
   const [selectedPost, setSelectedPost] = useState<FeedPost | null>(null);
   const [profileTarget, setProfileTarget] = useState<string | null>(null);
+
+  const [vibeProfile, setVibeProfile] = useState<StoredVibeProfile | null>(() =>
+    loadVibeProfile(),
+  );
+  const [vibeQuizOpen, setVibeQuizOpen] = useState(false);
+  const [vibeQuizInitialArchetype, setVibeQuizInitialArchetype] =
+    useState<VibeArchetype | null>(null);
+  const [vibeBannerDismissed, setVibeBannerDismissed] = useState(false);
+
+  const vibeArchetype = useMemo(
+    () => getArchetypeById(vibeProfile?.archetypeId),
+    [vibeProfile],
+  );
 
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const queue = usePlayerStore((s) => s.queue);
@@ -198,9 +225,17 @@ export default function App() {
       .then((data) => {
         if (data?.user) {
           setSessionUser(data.user);
+        } else if (!loadVibeProfile()) {
+          setVibeQuizInitialArchetype(null);
+          setVibeQuizOpen(true);
         }
       })
-      .catch(() => {});
+      .catch(() => {
+        if (!loadVibeProfile()) {
+          setVibeQuizInitialArchetype(null);
+          setVibeQuizOpen(true);
+        }
+      });
     loadCrates();
   }, [loadCrates]);
 
@@ -210,6 +245,63 @@ export default function App() {
     }, 180);
     return () => window.clearTimeout(timer);
   }, [loadFeed]);
+
+  const openAuthModal = (tab: 'login' | 'register' = 'login') => {
+    setAuthModalTab(tab);
+    setAuthModalOpen(true);
+  };
+
+  const handleQuizSkip = () => {
+    if (!vibeProfile?.archetypeId) {
+      const skipped: StoredVibeProfile = {
+        completedAt: null,
+        skipped: true,
+        archetypeId: null,
+        answers: {},
+        tagScores: {},
+      };
+      saveVibeProfile(skipped);
+      setVibeProfile(skipped);
+    }
+    setVibeQuizOpen(false);
+  };
+
+  const handleQuizComplete = (profile: StoredVibeProfile) => {
+    saveVibeProfile(profile);
+    setVibeProfile(profile);
+    setVibeBannerDismissed(false);
+  };
+
+  const handleExploreFeed = () => {
+    setVibeQuizOpen(false);
+    setActiveNav('Now Playing');
+    setActiveCrateId(null);
+    setBookmarksOnly(false);
+    setActiveTag('all');
+    setSearchQuery('');
+    setVibeBannerDismissed(false);
+  };
+
+  const handleProceedToSignUp = () => {
+    setVibeQuizOpen(false);
+    openAuthModal('register');
+  };
+
+  const handleOpenQuizRetake = () => {
+    setVibeQuizInitialArchetype(null);
+    setVibeQuizOpen(true);
+  };
+
+  const handleOpenSavedReveal = () => {
+    if (!vibeArchetype) return;
+    setVibeQuizInitialArchetype(vibeArchetype);
+    setVibeQuizOpen(true);
+  };
+
+  const handleResetVibeProfile = () => {
+    clearVibeProfile();
+    setVibeProfile(null);
+  };
 
   const handleLogout = async () => {
     await fetch('/api/auth/logout', {
@@ -221,19 +313,44 @@ export default function App() {
   };
 
   const displayedPosts = useMemo(() => {
-    if (databaseConnected) return feedPosts;
-    return feedPosts.filter((post) => {
-      const matchesTag = activeTag === 'all' || post.tags.includes(activeTag);
-      const q = searchQuery.trim().toLowerCase();
-      const matchesQuery =
-        !q ||
-        post.title.toLowerCase().includes(q) ||
-        post.artistName.toLowerCase().includes(q) ||
-        post.tags.some((t) => t.toLowerCase().includes(q));
-      const matchesBookmarks = !bookmarksOnly || post.bookmarkedByViewer;
-      return matchesTag && matchesQuery && matchesBookmarks;
-    });
-  }, [databaseConnected, feedPosts, activeTag, searchQuery, bookmarksOnly]);
+    const baseList = databaseConnected
+      ? feedPosts
+      : feedPosts.filter((post) => {
+          const matchesTag = activeTag === 'all' || post.tags.includes(activeTag);
+          const q = searchQuery.trim().toLowerCase();
+          const matchesQuery =
+            !q ||
+            post.title.toLowerCase().includes(q) ||
+            post.artistName.toLowerCase().includes(q) ||
+            post.tags.some((t) => t.toLowerCase().includes(q));
+          const matchesBookmarks = !bookmarksOnly || post.bookmarkedByViewer;
+          return matchesTag && matchesQuery && matchesBookmarks;
+        });
+
+    if (
+      vibeArchetype &&
+      activeTag === 'all' &&
+      !searchQuery.trim() &&
+      !activeCrateId &&
+      !bookmarksOnly
+    ) {
+      return [...baseList].sort((a, b) => {
+        const matchA = a.tags.filter((t) => vibeArchetype.feedTags.includes(t)).length;
+        const matchB = b.tags.filter((t) => vibeArchetype.feedTags.includes(t)).length;
+        return matchB - matchA;
+      });
+    }
+
+    return baseList;
+  }, [
+    databaseConnected,
+    feedPosts,
+    activeTag,
+    searchQuery,
+    bookmarksOnly,
+    activeCrateId,
+    vibeArchetype,
+  ]);
 
   const likedIds = useMemo(
     () => feedPosts.filter((p) => p.likedByViewer).map((p) => p.id),
@@ -261,7 +378,7 @@ export default function App() {
     }
 
     if (!sessionUser) {
-      setAuthModalOpen(true);
+      openAuthModal('login');
       return;
     }
 
@@ -312,7 +429,7 @@ export default function App() {
     }
 
     if (!sessionUser) {
-      setAuthModalOpen(true);
+      openAuthModal('login');
       return;
     }
 
@@ -398,11 +515,14 @@ export default function App() {
 
   const handleRequireAuthAction = (onAuthorized: () => void) => {
     if (!sessionUser) {
-      setAuthModalOpen(true);
+      openAuthModal('login');
       return;
     }
     onAuthorized();
   };
+
+  const isSettingsView =
+    activeNav === 'Settings' && !activeCrateId && !bookmarksOnly;
 
   const feedTitle = activeCrateDetail
     ? activeCrateDetail.crate.title
@@ -457,7 +577,7 @@ export default function App() {
           ) : (
             <button
               type="button"
-              onClick={() => setAuthModalOpen(true)}
+              onClick={() => openAuthModal('login')}
               className="text-xs font-semibold text-[#B84A2E] hover:text-[#9E3D24]"
             >
               Sign in
@@ -496,7 +616,7 @@ export default function App() {
               onTagChange={setActiveTag}
               onOpenAuth={() => {
                 setMobileMenuOpen(false);
-                setAuthModalOpen(true);
+                openAuthModal('login');
               }}
               onOpenProfile={(username) => {
                 setMobileMenuOpen(false);
@@ -533,7 +653,7 @@ export default function App() {
               }
               onSearchChange={setSearchQuery}
               onTagChange={setActiveTag}
-              onOpenAuth={() => setAuthModalOpen(true)}
+              onOpenAuth={() => openAuthModal('login')}
               onOpenProfile={(username) => setProfileTarget(username)}
               onLogout={handleLogout}
             />
@@ -555,29 +675,269 @@ export default function App() {
             }}
           />
 
-          <section className="space-y-4">
-            <div className="flex items-baseline justify-between gap-4 border-b border-[#DDD5C7] pb-3">
-              <div>
+          {isSettingsView ? (
+            <section className="space-y-6">
+              <div className="border-b border-[#DDD5C7] pb-3">
                 <h2 className="font-display text-xl font-semibold text-[#1F1B18]">
-                  {feedTitle}
+                  Settings &amp; Taste Profile
                 </h2>
                 <p className="text-xs text-[#5C534A]">
-                  {activeCrateDetail
-                    ? activeCrateDetail.crate.description ||
-                      `Curated by @${activeCrateDetail.crate.ownerUsername}`
-                    : 'Curated SoundCloud and YouTube pressings from the community'}
+                  Tune your listener archetype, matched artists, and SONA account access.
                 </p>
               </div>
-              <span className="font-mono-tabular text-xs text-[#5C534A]">
-                {displayedPosts.length} tracks
-              </span>
-            </div>
 
-            {feedNotice && (
-              <p className="rounded-md border border-[#DDD5C7] bg-[#FCF9F4] px-4 py-2.5 text-xs text-[#5C534A]">
-                {feedNotice}
-              </p>
-            )}
+              {/* Taste Profile / Retake Quiz Card */}
+              <div className="rounded-xl border border-[#DDD5C7] bg-[#FCF9F4] p-6 space-y-5">
+                <div className="flex flex-wrap items-start justify-between gap-4">
+                  <div className="space-y-1 max-w-xl">
+                    <p className="text-xs font-semibold text-[#B84A2E]">
+                      Vibe Quiz Profile
+                    </p>
+                    <h3 className="font-display text-2xl font-semibold text-[#1F1B18]">
+                      {vibeArchetype
+                        ? vibeArchetype.name
+                        : 'No taste profile saved yet'}
+                    </h3>
+                    <p className="text-xs sm:text-sm text-[#5C534A] leading-relaxed">
+                      {vibeArchetype
+                        ? vibeArchetype.description
+                        : 'Answer 7 quick questions across music, late-night foods, and daily rituals (~45 seconds) to get a custom archetype, artist recommendations, and a tuned feed.'}
+                    </p>
+                  </div>
+
+                  <div className="flex flex-wrap items-center gap-2">
+                    {vibeArchetype && (
+                      <button
+                        type="button"
+                        onClick={handleOpenSavedReveal}
+                        className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md border border-[#DDD5C7] bg-[#F7F3EC] text-xs font-semibold text-[#1F1B18] hover:border-[#B84A2E] cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 text-[#B84A2E]" />
+                        <span>View Taste Reveal</span>
+                      </button>
+                    )}
+                    <button
+                      type="button"
+                      onClick={handleOpenQuizRetake}
+                      className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-[#B84A2E] text-xs font-semibold text-[#FCF9F4] hover:bg-[#9E3D24] cursor-pointer"
+                    >
+                      <RotateCcw className="w-3.5 h-3.5" />
+                      <span>{vibeArchetype ? 'Retake Vibe Quiz' : 'Take Vibe Quiz'}</span>
+                    </button>
+                  </div>
+                </div>
+
+                {vibeArchetype && (
+                  <div className="border-t border-[#DDD5C7] pt-4 space-y-3">
+                    <div className="flex items-center justify-between text-xs text-[#5C534A]">
+                      <span className="font-medium text-[#1F1B18]">
+                        Matched Artists (Mainstream → Deep Cuts)
+                      </span>
+                      <button
+                        type="button"
+                        onClick={handleResetVibeProfile}
+                        className="text-xs text-[#5C534A] hover:text-[#B84A2E] cursor-pointer"
+                      >
+                        Clear saved taste profile
+                      </button>
+                    </div>
+                    <ol className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      {vibeArchetype.artists.map((artist, idx) => (
+                        <li
+                          key={artist.name}
+                          className="rounded-lg border border-[#DDD5C7] bg-[#F7F3EC] px-3.5 py-2.5 flex items-start gap-2.5"
+                        >
+                          <span className="font-mono-tabular text-[11px] font-semibold text-[#B84A2E] pt-0.5">
+                            0{idx + 1}
+                          </span>
+                          <div className="min-w-0">
+                            <p className="text-xs font-semibold text-[#1F1B18]">
+                              {artist.name}
+                            </p>
+                            <p className="text-[11px] text-[#5C534A] leading-snug">
+                              {artist.reason}
+                            </p>
+                          </div>
+                        </li>
+                      ))}
+                    </ol>
+                  </div>
+                )}
+              </div>
+
+              {/* Account & Invite Access Card */}
+              <div className="rounded-xl border border-[#DDD5C7] bg-[#FCF9F4] p-6 flex flex-wrap items-center justify-between gap-4">
+                <div className="space-y-1">
+                  <p className="text-xs font-semibold text-[#5C534A]">
+                    Member Account
+                  </p>
+                  {sessionUser ? (
+                    <>
+                      <h3 className="font-display text-lg font-semibold text-[#1F1B18]">
+                        @{sessionUser.username}
+                      </h3>
+                      <p className="text-xs text-[#5C534A]">
+                        {sessionUser.email}
+                        <span className="mx-1.5" aria-hidden="true">·</span>
+                        <span>Role: {sessionUser.role}</span>
+                      </p>
+                    </>
+                  ) : (
+                    <>
+                      <h3 className="font-display text-lg font-semibold text-[#1F1B18]">
+                        Browsing as Guest
+                      </h3>
+                      <p className="text-xs text-[#5C534A]">
+                        Join SONA with an invite code to share tracks, comment, and build crates.
+                      </p>
+                    </>
+                  )}
+                </div>
+
+                {sessionUser ? (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setProfileTarget(sessionUser.username)}
+                      className="px-3.5 py-2 rounded-md border border-[#DDD5C7] bg-[#F7F3EC] text-xs font-semibold text-[#1F1B18] hover:border-[#B84A2E] cursor-pointer"
+                    >
+                      View Profile
+                    </button>
+                    <button
+                      type="button"
+                      onClick={handleLogout}
+                      className="px-3.5 py-2 rounded-md border border-[#DDD5C7] text-xs font-medium text-[#5C534A] hover:text-[#B84A2E] cursor-pointer"
+                    >
+                      Sign Out
+                    </button>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-2">
+                    <button
+                      type="button"
+                      onClick={() => openAuthModal('login')}
+                      className="px-3.5 py-2 rounded-md border border-[#DDD5C7] bg-[#F7F3EC] text-xs font-semibold text-[#1F1B18] hover:border-[#B84A2E] cursor-pointer"
+                    >
+                      Sign In
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => openAuthModal('register')}
+                      className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-md bg-[#B84A2E] text-xs font-semibold text-[#FCF9F4] hover:bg-[#9E3D24] cursor-pointer"
+                    >
+                      <UserPlus className="w-3.5 h-3.5" />
+                      <span>Join with Invite</span>
+                    </button>
+                  </div>
+                )}
+              </div>
+            </section>
+          ) : (
+            <section className="space-y-4">
+              {!vibeBannerDismissed && !activeCrateId && !bookmarksOnly && (
+                vibeArchetype ? (
+                  <div className="rounded-xl border border-[#DDD5C7] bg-[#FCF9F4] p-4 flex flex-wrap items-center justify-between gap-4">
+                    <div className="space-y-1 min-w-0">
+                      <p className="text-[11px] font-semibold text-[#B84A2E]">
+                        Tuned for {vibeArchetype.name}
+                      </p>
+                      <p className="text-xs text-[#5C534A]">
+                        Prioritizing{' '}
+                        <span className="font-medium text-[#1F1B18]">
+                          {vibeArchetype.artists
+                            .slice(0, 3)
+                            .map((a) => a.name)
+                            .join(', ')}
+                        </span>{' '}
+                        vibes and{' '}
+                        {vibeArchetype.feedTags.map((t) => `#${t}`).join(' · ')}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-2 shrink-0">
+                      <button
+                        type="button"
+                        onClick={handleOpenSavedReveal}
+                        className="px-3 py-1.5 rounded-md border border-[#DDD5C7] bg-[#F7F3EC] text-xs font-medium text-[#1F1B18] hover:border-[#B84A2E] cursor-pointer"
+                      >
+                        View Reveal
+                      </button>
+                      <button
+                        type="button"
+                        onClick={handleOpenQuizRetake}
+                        className="px-3 py-1.5 rounded-md border border-[#DDD5C7] text-xs font-medium text-[#5C534A] hover:text-[#1F1B18] cursor-pointer"
+                      >
+                        Retake
+                      </button>
+                      {!sessionUser && (
+                        <button
+                          type="button"
+                          onClick={() => openAuthModal('register')}
+                          className="px-3 py-1.5 rounded-md bg-[#B84A2E] text-xs font-semibold text-[#FCF9F4] hover:bg-[#9E3D24] cursor-pointer"
+                        >
+                          Sign Up
+                        </button>
+                      )}
+                      <button
+                        type="button"
+                        onClick={() => setVibeBannerDismissed(true)}
+                        aria-label="Dismiss vibe summary"
+                        className="p-1 text-[#5C534A] hover:text-[#1F1B18] cursor-pointer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                ) : (
+                  !sessionUser && (
+                    <div className="rounded-xl border border-[#DDD5C7] bg-[#FCF9F4] px-4 py-3 flex flex-wrap items-center justify-between gap-3">
+                      <p className="text-xs text-[#5C534A]">
+                        Want tailored artist &amp; track picks before joining? Take the 45-second Vibe Quiz.
+                      </p>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <button
+                          type="button"
+                          onClick={handleOpenQuizRetake}
+                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-md bg-[#B84A2E] text-xs font-semibold text-[#FCF9F4] hover:bg-[#9E3D24] cursor-pointer"
+                        >
+                          <Sparkles className="w-3.5 h-3.5" />
+                          <span>Take Vibe Quiz</span>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setVibeBannerDismissed(true)}
+                          aria-label="Dismiss vibe quiz prompt"
+                          className="p-1 text-[#5C534A] hover:text-[#1F1B18] cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+                    </div>
+                  )
+                )
+              )}
+
+              <div className="flex items-baseline justify-between gap-4 border-b border-[#DDD5C7] pb-3">
+                <div>
+                  <h2 className="font-display text-xl font-semibold text-[#1F1B18]">
+                    {feedTitle}
+                  </h2>
+                  <p className="text-xs text-[#5C534A]">
+                    {activeCrateDetail
+                      ? activeCrateDetail.crate.description ||
+                        `Curated by @${activeCrateDetail.crate.ownerUsername}`
+                      : 'Curated SoundCloud and YouTube pressings from the community'}
+                  </p>
+                </div>
+                <span className="font-mono-tabular text-xs text-[#5C534A]">
+                  {displayedPosts.length} tracks
+                </span>
+              </div>
+
+              {feedNotice && (
+                <p className="rounded-md border border-[#DDD5C7] bg-[#FCF9F4] px-4 py-2.5 text-xs text-[#5C534A]">
+                  {feedNotice}
+                </p>
+              )}
 
             {/* Skeleton Loaders (Spec Section 7) */}
             {loadingFeed ? (
@@ -793,6 +1153,7 @@ export default function App() {
               </>
             )}
           </section>
+          )}
         </main>
 
         {/* Pane 3: Interactive Decorative Vinyl Hero (Right, lg+ only) */}
@@ -810,8 +1171,20 @@ export default function App() {
       <PersistentFooter />
       <QueueDrawer />
 
+      <VibeQuizModal
+        isOpen={vibeQuizOpen}
+        recommendedPool={feedPosts}
+        initialArchetype={vibeQuizInitialArchetype}
+        isSignedIn={Boolean(sessionUser)}
+        onSkip={handleQuizSkip}
+        onComplete={handleQuizComplete}
+        onProceedToSignUp={handleProceedToSignUp}
+        onExploreFeed={handleExploreFeed}
+      />
+
       <AuthGateModal
         isOpen={authModalOpen}
+        initialTab={authModalTab}
         onClose={() => setAuthModalOpen(false)}
         onAuthenticated={(user) => {
           setSessionUser(user);

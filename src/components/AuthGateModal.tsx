@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react';
+import { useEffect, useState, type FormEvent } from 'react';
 import { Lock, X } from 'lucide-react';
 
 export interface SessionUser {
@@ -10,16 +10,18 @@ export interface SessionUser {
 
 interface AuthGateModalProps {
   isOpen: boolean;
+  initialTab?: 'login' | 'register';
   onClose: () => void;
   onAuthenticated: (user: SessionUser) => void;
 }
 
 export function AuthGateModal({
   isOpen,
+  initialTab = 'login',
   onClose,
   onAuthenticated,
 }: AuthGateModalProps) {
-  const [tab, setTab] = useState<'login' | 'register'>('login');
+  const [tab, setTab] = useState<'login' | 'register'>(initialTab);
   const [identifier, setIdentifier] = useState('');
   const [username, setUsername] = useState('');
   const [email, setEmail] = useState('');
@@ -27,6 +29,13 @@ export function AuthGateModal({
   const [inviteCode, setInviteCode] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+
+  useEffect(() => {
+    if (isOpen) {
+      setTab(initialTab);
+      setError(null);
+    }
+  }, [isOpen, initialTab]);
 
   if (!isOpen) return null;
 
