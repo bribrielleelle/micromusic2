@@ -184,6 +184,70 @@ export interface CommunityCuratorItem {
   isFollowedByViewer: boolean;
 }
 
+export interface SoundCloudTrackPayload {
+  id: string | number;
+  title: string;
+  artist: string;
+  genre?: string | null;
+  bpm?: number | null;
+  tagList?: string[];
+  mood?: string | null;
+  playbackCount?: number | null;
+  durationSeconds?: number | null;
+  likedAt?: string | null;
+  permalinkUrl?: string | null;
+}
+
+export interface SoundCloudOAuthStatus {
+  oauthConfigured: boolean;
+  callbackUrl: string;
+  connected: boolean;
+  user: {
+    id: number;
+    username: string;
+    permalinkUrl: string | null;
+    avatarUrl: string | null;
+  } | null;
+  likedTracks: SoundCloudTrackPayload[];
+}
+
+export interface TasteEngineResponse {
+  analyzedCount: number;
+  trackIds: string[];
+  newlyAddedCount: number;
+  newlyAddedTrackTitles: string[];
+  analysis: {
+    sonicProfile: {
+      summary: string;
+      dominantGenres: string[];
+      moods: string[];
+      tempoRangeBpm: string;
+      undergroundPercentage: number;
+      mainstreamVsUndergroundBalance: string;
+      vibeKeywords: string[];
+    };
+    discoveryCrate: {
+      title: string;
+      description: string;
+      aestheticMood: string;
+      tracks: Array<{
+        postId: string;
+        whyItFits: string;
+        matchScore: number;
+      }>;
+    };
+    recommendedTastemakers: Array<{
+      username: string;
+      overlapPercent: number;
+      sharedGenres: string[];
+      reason: string;
+    }>;
+    realtimeAdaptationNote: string;
+  };
+  hydratedPosts: Record<string, FeedPost> | null;
+  generatedAt: string;
+}
+
 const COVER_TONES = ['#2E2622', '#394037', '#523B2B', '#23282D', '#43302E'];
 const COVER_ACCENTS = ['#B84A2E', '#C68B3C', '#9E3D24', '#8A6331'];
 

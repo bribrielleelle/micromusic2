@@ -7,6 +7,7 @@ import {
   Search,
   Settings,
   ShieldCheck,
+  Sparkles,
   TrendingUp,
   Users,
   X,
@@ -19,6 +20,7 @@ import { VerifiedBadge } from './VerifiedBadge';
 const NAV_ITEMS: { label: NavSection; icon: typeof Disc3 }[] = [
   { label: 'Now Playing', icon: Disc3 },
   { label: 'Browse', icon: Compass },
+  { label: 'Taste Engine', icon: Sparkles },
   { label: 'Communities', icon: Users },
   { label: 'Charts', icon: TrendingUp },
   { label: 'Settings', icon: Settings },

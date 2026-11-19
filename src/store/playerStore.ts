@@ -5,6 +5,7 @@ export type MediaProvider = 'youtube' | 'soundcloud';
 export type NavSection =
   | 'Now Playing'
   | 'Browse'
+  | 'Taste Engine'
   | 'Communities'
   | 'Charts'
   | 'Settings'

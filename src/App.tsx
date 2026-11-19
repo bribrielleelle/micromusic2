@@ -48,6 +48,7 @@ import { ProfileDrawer } from './components/ProfileDrawer';
 import { QueueDrawer } from './components/QueueDrawer';
 import { ShareTrackModal } from './components/ShareTrackModal';
 import { SidebarNav } from './components/SidebarNav';
+import { TasteEngineView } from './components/TasteEngineView';
 import { VerifiedBadge } from './components/VerifiedBadge';
 import { VibeQuizModal } from './components/VibeQuizModal';
 import { VinylDisplay } from './components/VinylDisplay';
@@ -347,6 +348,8 @@ export default function App() {
     activeNav === 'Browse' && !activeCrateId && !bookmarksOnly;
   const isCommunitiesView =
     activeNav === 'Communities' && !activeCrateId && !bookmarksOnly;
+  const isTasteEngineView =
+    activeNav === 'Taste Engine' && !activeCrateId && !bookmarksOnly;
 
   const displayedPosts = useMemo(() => {
     const baseList = databaseConnected
@@ -1062,6 +1065,16 @@ export default function App() {
             <AdminDashboardView
               sessionUser={sessionUser}
               onFeedChanged={() => loadFeed(null)}
+            />
+          ) : isTasteEngineView ? (
+            <TasteEngineView
+              platformPosts={feedPosts.length > 0 ? feedPosts : FALLBACK_POSTS}
+              sessionUser={sessionUser}
+              databaseConnected={databaseConnected}
+              onOpenProfile={(username) => setProfileTarget(username)}
+              onSelectCrate={handleSelectCrate}
+              onCratesChanged={loadCrates}
+              onRequireAuth={() => openAuthModal('login')}
             />
           ) : isCommunitiesView ? (
             <CommunitiesView
