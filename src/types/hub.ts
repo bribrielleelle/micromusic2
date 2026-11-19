@@ -171,6 +171,19 @@ export interface AdminOverviewResponse {
   emailAlerts: EmailAlertLogItem[];
 }
 
+export interface CommunityCuratorItem {
+  id: string;
+  username: string;
+  bio: string | null;
+  avatarUrl: string | null;
+  role: 'user' | 'admin';
+  isVerifiedArtist: boolean;
+  verifiedArtistName: string | null;
+  createdAt: string;
+  followerCount: number;
+  isFollowedByViewer: boolean;
+}
+
 const COVER_TONES = ['#2E2622', '#394037', '#523B2B', '#23282D', '#43302E'];
 const COVER_ACCENTS = ['#B84A2E', '#C68B3C', '#9E3D24', '#8A6331'];
 
@@ -183,6 +196,8 @@ export function postToQueueTrack(post: FeedPost, crateName = 'Discovery Feed'): 
     title: post.title,
     artistName: post.artistName,
     curatorHandle: `@${post.author.username}`,
+    curatorVerified: Boolean(post.author.isVerifiedArtist),
+    curatorArtistName: post.author.verifiedArtistName ?? null,
     thumbnailUrl: post.thumbnailUrl,
     durationSeconds: post.durationSeconds || 240,
     tags: post.tags,

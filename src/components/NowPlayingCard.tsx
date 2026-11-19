@@ -8,7 +8,9 @@ import {
   SkipBack,
   SkipForward,
 } from 'lucide-react';
+import { useEffect, useState } from 'react';
 import { formatDuration, usePlayerStore } from '../store/playerStore';
+import { VerifiedBadge } from './VerifiedBadge';
 
 interface NowPlayingCardProps {
   likedIds: string[];
@@ -33,6 +35,11 @@ export function NowPlayingCard({
   const skipPrevious = usePlayerStore((s) => s.skipPrevious);
   const requestSeek = usePlayerStore((s) => s.requestSeek);
   const setQueueDrawerOpen = usePlayerStore((s) => s.setQueueDrawerOpen);
+  const [thumbFailed, setThumbFailed] = useState(false);
+
+  useEffect(() => {
+    setThumbFailed(false);
+  }, [currentTrack?.id, currentTrack?.thumbnailUrl]);
 
   if (!currentTrack) {
     return (
@@ -58,13 +65,25 @@ export function NowPlayingCard({
     >
       <div className="flex flex-col sm:flex-row gap-5 items-start sm:items-center">
         <div
-          className="w-24 h-24 sm:w-28 sm:h-28 shrink-0 rounded-lg border border-[#DDD5C7] flex flex-col justify-between p-3 text-[#FCF9F4]"
+          className="relative w-24 h-24 sm:w-28 sm:h-28 shrink-0 overflow-hidden rounded-lg border border-[#DDD5C7] flex flex-col justify-between p-3 text-[#FCF9F4]"
           style={{ backgroundColor: currentTrack.coverTone }}
         >
-          <span className="font-mono-tabular text-[10px] uppercase tracking-wider opacity-80">
-            {currentTrack.provider}
-          </span>
-          <Radio className="w-5 h-5 opacity-80" />
+          {currentTrack.thumbnailUrl && !thumbFailed ? (
+            <img
+              src={currentTrack.thumbnailUrl}
+              alt={`${currentTrack.title} cover artwork`}
+              referrerPolicy="no-referrer"
+              onError={() => setThumbFailed(true)}
+              className="absolute inset-0 w-full h-full object-cover"
+            />
+          ) : (
+            <>
+              <span className="font-mono-tabular text-[10px] uppercase tracking-wider opacity-80">
+                {currentTrack.provider}
+              </span>
+              <Radio className="w-5 h-5 opacity-80" />
+            </>
+          )}
         </div>
 
         <div className="flex-1 min-w-0 w-full space-y-3">
@@ -72,7 +91,12 @@ export function NowPlayingCard({
             <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-[#5C534A]">
               <span>Now Playing</span>
               <span aria-hidden="true">·</span>
-              <span>Curated by {currentTrack.curatorHandle}</span>
+              <span className="inline-flex items-center gap-1">
+                <span>Curated by {currentTrack.curatorHandle}</span>
+                {currentTrack.curatorVerified && (
+                  <VerifiedBadge artistName={currentTrack.curatorArtistName} />
+                )}
+              </span>
               <span aria-hidden="true">·</span>
               <span>{currentTrack.crateName}</span>
             </div>

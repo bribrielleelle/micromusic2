@@ -18,6 +18,8 @@ export interface QueueTrack {
   title: string;
   artistName: string;
   curatorHandle: string;
+  curatorVerified?: boolean;
+  curatorArtistName?: string | null;
   thumbnailUrl?: string | null;
   durationSeconds: number;
   tags: string[];

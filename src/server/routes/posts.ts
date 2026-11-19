@@ -52,7 +52,7 @@ function sanitizeTags(rawTags: unknown): string[] {
   return Array.from(cleaned);
 }
 
-async function hydratePosts(
+export async function hydratePosts(
   rows: Array<{
     id: string;
     userId: string;

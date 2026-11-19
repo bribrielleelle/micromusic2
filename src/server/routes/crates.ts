@@ -10,6 +10,7 @@ import {
   type AuthRequest,
 } from '../auth.ts';
 import { checkAndRecordRateLimit, getClientIdentifier } from '../rateLimit.ts';
+import { hydratePosts } from './posts.ts';
 
 const cratesRouter = Router();
 
@@ -78,9 +79,21 @@ cratesRouter.post(
   requireDatabase,
   requireAuth,
   async (req: AuthRequest, res: Response) => {
-    const { title, description, isPublic } = req.body ?? {};
+    const { title, description, isPublic, coverUrl } = req.body ?? {};
     if (typeof title !== 'string' || title.trim().length < 2 || title.length > 80) {
       return res.status(400).json({ error: 'Crate title must be 2–80 characters.' });
+    }
+
+    let safeCoverUrl: string | null = null;
+    if (typeof coverUrl === 'string' && coverUrl.trim()) {
+      try {
+        const parsed = new URL(coverUrl.trim());
+        if (parsed.protocol === 'https:') {
+          safeCoverUrl = parsed.toString().slice(0, 400);
+        }
+      } catch {
+        return res.status(400).json({ error: 'Cover URL must be a valid https:// URL.' });
+      }
     }
 
     try {
@@ -91,6 +104,7 @@ cratesRouter.post(
           ownerId: req.authUser!.id,
           title: title.trim(),
           description: typeof description === 'string' ? description.trim().slice(0, 300) : null,
+          coverUrl: safeCoverUrl,
           isPublic: typeof isPublic === 'boolean' ? isPublic : true,
         })
         .returning();
@@ -159,9 +173,13 @@ cratesRouter.get('/crates/:id', optionalAuth, async (req: AuthRequest, res: Resp
         durationSeconds: posts.durationSeconds,
         tags: posts.tags,
         viewCount: posts.viewCount,
+        isHidden: posts.isHidden,
         postUserId: posts.userId,
         postCreatedAt: posts.createdAt,
         curatorUsername: users.username,
+        curatorAvatarUrl: users.avatarUrl,
+        curatorIsVerifiedArtist: users.isVerifiedArtist,
+        curatorVerifiedArtistName: users.verifiedArtistName,
       })
       .from(crateItems)
       .innerJoin(posts, eq(crateItems.postId, posts.id))
@@ -169,41 +187,39 @@ cratesRouter.get('/crates/:id', optionalAuth, async (req: AuthRequest, res: Resp
       .where(and(eq(crateItems.crateId, id), eq(posts.isHidden, false)))
       .orderBy(asc(crateItems.position), desc(crateItems.addedAt));
 
+    const hydratedPosts = await hydratePosts(
+      joinedItems.map((item) => ({
+        id: item.postId,
+        userId: item.postUserId,
+        mediaUrl: item.mediaUrl,
+        title: item.title,
+        artistName: item.artistName,
+        thumbnailUrl: item.thumbnailUrl,
+        durationSeconds: item.durationSeconds,
+        tags: item.tags,
+        viewCount: item.viewCount,
+        isHidden: item.isHidden,
+        createdAt: item.postCreatedAt,
+        authorUsername: item.curatorUsername,
+        authorAvatarUrl: item.curatorAvatarUrl,
+        authorIsVerifiedArtist: item.curatorIsVerifiedArtist,
+        authorVerifiedArtistName: item.curatorVerifiedArtistName,
+      })),
+      req.authUser?.id,
+    );
+
     return res.json({
       crate: {
         ...crate,
         createdAt: crate.createdAt.toISOString(),
       },
-      items: joinedItems.map((item) => ({
+      items: joinedItems.map((item, idx) => ({
         crateId: item.crateId,
         postId: item.postId,
         addedBy: item.addedBy,
         position: item.position,
         addedAt: item.addedAt.toISOString(),
-        post: {
-          id: item.postId,
-          userId: item.postUserId,
-          mediaUrl: item.mediaUrl,
-          provider: item.mediaUrl.includes('soundcloud.com') ? 'soundcloud' : 'youtube',
-          title: item.title || 'Untitled Track',
-          artistName: item.artistName || 'Unknown Artist',
-          thumbnailUrl: item.thumbnailUrl,
-          durationSeconds: item.durationSeconds ?? 240,
-          tags: Array.isArray(item.tags) ? item.tags : [],
-          viewCount: item.viewCount,
-          isHidden: false,
-          createdAt: item.postCreatedAt.toISOString(),
-          author: {
-            id: item.postUserId,
-            username: item.curatorUsername,
-            avatarUrl: null,
-          },
-          likeCount: 0,
-          bookmarkCount: 0,
-          commentCount: 0,
-          likedByViewer: false,
-          bookmarkedByViewer: false,
-        },
+        post: hydratedPosts[idx],
       })),
     });
   } catch (error) {

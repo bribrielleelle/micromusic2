@@ -39,6 +39,7 @@ import {
 } from './types/hub';
 import { AdminDashboardView } from './components/AdminDashboardView';
 import { AuthGateModal, type SessionUser } from './components/AuthGateModal';
+import { CommunitiesView } from './components/CommunitiesView';
 import { CreateCrateModal } from './components/CreateCrateModal';
 import { NowPlayingCard } from './components/NowPlayingCard';
 import { PersistentFooter } from './components/PersistentFooter';
@@ -50,6 +51,19 @@ import { SidebarNav } from './components/SidebarNav';
 import { VerifiedBadge } from './components/VerifiedBadge';
 import { VibeQuizModal } from './components/VibeQuizModal';
 import { VinylDisplay } from './components/VinylDisplay';
+
+const BROWSE_TAGS = [
+  'all',
+  'downtempo',
+  'ambient-jazz',
+  'analog',
+  'vinyl-rip',
+  'deep-house',
+  'trip-hop',
+  'synthwave',
+  'electronic',
+  'indie',
+];
 
 const FALLBACK_POSTS: FeedPost[] = INITIAL_TRACKS.map((trk, idx) => ({
   id: trk.id,
@@ -123,6 +137,8 @@ export default function App() {
   const [claimNotes, setClaimNotes] = useState('');
   const [claimSubmitting, setClaimSubmitting] = useState(false);
   const [claimFeedback, setClaimFeedback] = useState<string | null>(null);
+  const [failedPostThumbIds, setFailedPostThumbIds] = useState<Record<string, boolean>>({});
+  const [failedCrateCover, setFailedCrateCover] = useState(false);
 
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const queue = usePlayerStore((s) => s.queue);
@@ -325,6 +341,13 @@ export default function App() {
     loadFeed(null);
   };
 
+  const isChartsView =
+    activeNav === 'Charts' && !activeCrateId && !bookmarksOnly;
+  const isBrowseView =
+    activeNav === 'Browse' && !activeCrateId && !bookmarksOnly;
+  const isCommunitiesView =
+    activeNav === 'Communities' && !activeCrateId && !bookmarksOnly;
+
   const displayedPosts = useMemo(() => {
     const baseList = databaseConnected
       ? feedPosts
@@ -339,6 +362,14 @@ export default function App() {
           const matchesBookmarks = !bookmarksOnly || post.bookmarkedByViewer;
           return matchesTag && matchesQuery && matchesBookmarks;
         });
+
+    if (isChartsView) {
+      return [...baseList].sort((a, b) => {
+        const scoreA = a.likeCount * 2 + a.viewCount + a.bookmarkCount;
+        const scoreB = b.likeCount * 2 + b.viewCount + b.bookmarkCount;
+        return scoreB - scoreA;
+      });
+    }
 
     if (
       vibeArchetype &&
@@ -362,6 +393,7 @@ export default function App() {
     searchQuery,
     bookmarksOnly,
     activeCrateId,
+    isChartsView,
     vibeArchetype,
   ]);
 
@@ -597,7 +629,24 @@ export default function App() {
       ? 'Saved Bookmarks'
       : activeNav === 'Now Playing'
         ? 'Discovery Feed'
-        : activeNav;
+        : isChartsView
+          ? 'Community Charts'
+          : isBrowseView
+            ? 'Browse Catalog'
+            : activeNav;
+
+  const feedSubtitle = activeCrateDetail
+    ? activeCrateDetail.crate.description ||
+      `Curated by @${activeCrateDetail.crate.ownerUsername}`
+    : isChartsView
+      ? 'Top community pressings ranked by likes, saves, and plays'
+      : isBrowseView
+        ? 'Explore all community pressings by genre, format, and curator tags'
+        : 'Curated SoundCloud and YouTube pressings from the community';
+
+  useEffect(() => {
+    setFailedCrateCover(false);
+  }, [activeCrateDetail?.crate.id, activeCrateDetail?.crate.coverUrl]);
 
   const canManageCrate = Boolean(
     activeCrateDetail &&
@@ -1014,6 +1063,19 @@ export default function App() {
               sessionUser={sessionUser}
               onFeedChanged={() => loadFeed(null)}
             />
+          ) : isCommunitiesView ? (
+            <CommunitiesView
+              crates={crates}
+              fallbackPosts={FALLBACK_POSTS}
+              sessionUser={sessionUser}
+              databaseConnected={databaseConnected}
+              onSelectCrate={handleSelectCrate}
+              onCreateCrate={() =>
+                handleRequireAuthAction(() => setCreateCrateOpen(true))
+              }
+              onOpenProfile={(username) => setProfileTarget(username)}
+              onRequireAuth={() => openAuthModal('login')}
+            />
           ) : (
             <section className="space-y-4">
               {!vibeBannerDismissed && !activeCrateId && !bookmarksOnly && (
@@ -1099,21 +1161,63 @@ export default function App() {
               )}
 
               <div className="flex items-baseline justify-between gap-4 border-b border-[#DDD5C7] pb-3">
-                <div>
-                  <h2 className="font-display text-xl font-semibold text-[#1F1B18]">
-                    {feedTitle}
-                  </h2>
-                  <p className="text-xs text-[#5C534A]">
-                    {activeCrateDetail
-                      ? activeCrateDetail.crate.description ||
-                        `Curated by @${activeCrateDetail.crate.ownerUsername}`
-                      : 'Curated SoundCloud and YouTube pressings from the community'}
-                  </p>
+                <div className="flex items-center gap-3.5 min-w-0">
+                  {activeCrateDetail?.crate.coverUrl && !failedCrateCover && (
+                    <div className="w-12 h-12 shrink-0 rounded-md border border-[#DDD5C7] bg-[#EFE9DE] overflow-hidden">
+                      <img
+                        src={activeCrateDetail.crate.coverUrl}
+                        alt={`${activeCrateDetail.crate.title} cover artwork`}
+                        referrerPolicy="no-referrer"
+                        onError={() => setFailedCrateCover(true)}
+                        className="w-full h-full object-cover"
+                      />
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <h2 className="font-display text-xl font-semibold text-[#1F1B18]">
+                      {feedTitle}
+                    </h2>
+                    <p className="text-xs text-[#5C534A]">{feedSubtitle}</p>
+                  </div>
                 </div>
-                <span className="font-mono-tabular text-xs text-[#5C534A]">
+                <span className="font-mono-tabular text-xs text-[#5C534A] shrink-0">
                   {displayedPosts.length} tracks
                 </span>
               </div>
+
+              {isBrowseView && (
+                <div className="flex flex-wrap items-center gap-1.5 pb-1">
+                  {BROWSE_TAGS.map((tag) => {
+                    const selected = activeTag === tag;
+                    return (
+                      <button
+                        key={tag}
+                        type="button"
+                        onClick={() => setActiveTag(tag)}
+                        className={`px-3 py-1.5 text-xs font-medium rounded-md transition-colors whitespace-nowrap shrink-0 cursor-pointer ${
+                          selected
+                            ? 'bg-[#1F1B18] text-[#FCF9F4]'
+                            : 'bg-[#FCF9F4] text-[#5C534A] border border-[#DDD5C7] hover:text-[#1F1B18]'
+                        }`}
+                      >
+                        {tag === 'all' ? 'All Genres' : `#${tag}`}
+                      </button>
+                    );
+                  })}
+                  {(activeTag !== 'all' || searchQuery.trim()) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setActiveTag('all');
+                        setSearchQuery('');
+                      }}
+                      className="px-2.5 py-1.5 text-xs text-[#B84A2E] hover:underline cursor-pointer"
+                    >
+                      Reset filters
+                    </button>
+                  )}
+                </div>
+              )}
 
               {feedNotice && (
                 <p className="rounded-md border border-[#DDD5C7] bg-[#FCF9F4] px-4 py-2.5 text-xs text-[#5C534A]">
@@ -1159,6 +1263,7 @@ export default function App() {
                     const isCurrent = currentTrack?.id === post.id;
                     const isQueued = queue.some((q) => q.id === post.id);
                     const queueTrack = postToQueueTrack(post, feedTitle);
+                    const chartRank = String(idx + 1).padStart(2, '0');
 
                     return (
                       <article
@@ -1174,11 +1279,17 @@ export default function App() {
                           }`}
                           style={{ backgroundColor: queueTrack.coverTone }}
                         >
-                          {post.thumbnailUrl ? (
+                          {post.thumbnailUrl && !failedPostThumbIds[post.id] ? (
                             <img
                               src={post.thumbnailUrl}
                               alt={`${post.title} cover artwork`}
                               referrerPolicy="no-referrer"
+                              onError={() =>
+                                setFailedPostThumbIds((prev) => ({
+                                  ...prev,
+                                  [post.id]: true,
+                                }))
+                              }
                               className="w-full h-full object-cover"
                             />
                           ) : (
@@ -1205,6 +1316,15 @@ export default function App() {
                         </div>
 
                         <div className="p-4 space-y-3">
+                          {isChartsView && (
+                            <p className="font-mono-tabular text-[11px] font-semibold text-[#B84A2E]">
+                              #{chartRank}
+                              <span className="mx-1.5 text-[#5C534A]" aria-hidden="true">·</span>
+                              <span className="font-normal text-[#5C534A]">
+                                {post.viewCount} plays · {post.likeCount} likes · {post.bookmarkCount} saves
+                              </span>
+                            </p>
+                          )}
                           <div>
                             <button
                               type="button"

@@ -454,8 +454,10 @@ socialRouter.patch(
       }
       updates.links = cleanLinks;
     }
-    if (typeof avatarUrl === 'string' && avatarUrl.startsWith('https://')) {
-      updates.avatarUrl = avatarUrl.slice(0, 300);
+    if (avatarUrl === null || avatarUrl === '') {
+      updates.avatarUrl = null;
+    } else if (typeof avatarUrl === 'string' && avatarUrl.startsWith('https://')) {
+      updates.avatarUrl = avatarUrl.slice(0, 400);
     }
 
     try {
@@ -483,5 +485,64 @@ socialRouter.patch(
     }
   },
 );
+
+// GET /api/communities - Curators, Verified Artists, and follower counts
+socialRouter.get('/communities', optionalAuth, async (req: AuthRequest, res: Response) => {
+  if (!isDatabaseConfigured()) {
+    return res.json({ curators: [], databaseConfigured: false });
+  }
+
+  try {
+    const db = getDb();
+    const memberRows = await db
+      .select({
+        id: users.id,
+        username: users.username,
+        bio: users.bio,
+        avatarUrl: users.avatarUrl,
+        role: users.role,
+        isVerifiedArtist: users.isVerifiedArtist,
+        verifiedArtistName: users.verifiedArtistName,
+        createdAt: users.createdAt,
+      })
+      .from(users)
+      .orderBy(desc(users.isVerifiedArtist), desc(users.createdAt))
+      .limit(40);
+
+    const followerRows = await db
+      .select({ followedId: follows.followedId, total: count() })
+      .from(follows)
+      .groupBy(follows.followedId);
+
+    const followerMap = new Map<string, number>();
+    for (const r of followerRows) {
+      followerMap.set(r.followedId, Number(r.total ?? 0));
+    }
+
+    const viewerFollows = new Set<string>();
+    if (req.authUser) {
+      const rels = await db
+        .select({ followedId: follows.followedId })
+        .from(follows)
+        .where(eq(follows.followerId, req.authUser.id));
+      for (const r of rels) {
+        viewerFollows.add(r.followedId);
+      }
+    }
+
+    return res.json({
+      databaseConfigured: true,
+      curators: memberRows.map((m) => ({
+        ...m,
+        createdAt: m.createdAt.toISOString(),
+        followerCount: followerMap.get(m.id) ?? 0,
+        isFollowedByViewer: viewerFollows.has(m.id),
+      })),
+    });
+  } catch (error) {
+    const classified = classifyDatabaseError(error);
+    return res.status(classified.status).json({ error: classified.message });
+  }
+});
 
 export default socialRouter;
