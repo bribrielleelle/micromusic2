@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { UserCheck, UserPlus, X } from 'lucide-react';
 import type { UserProfileResponse } from '../types/hub';
 import type { SessionUser } from './AuthGateModal';
+import { VerifiedBadge } from './VerifiedBadge';
 
 interface ProfileDrawerProps {
   targetUser: string | null;
@@ -151,8 +152,14 @@ export function ProfileDrawer({
               <div className="space-y-3">
                 <div className="flex items-center justify-between gap-3">
                   <div>
-                    <h3 className="font-display text-2xl font-semibold text-[#1F1B18]">
-                      @{data.profile.username}
+                    <h3 className="font-display text-2xl font-semibold text-[#1F1B18] flex items-center gap-1.5 flex-wrap">
+                      <span>@{data.profile.username}</span>
+                      {data.profile.isVerifiedArtist && (
+                        <VerifiedBadge
+                          showLabel
+                          artistName={data.profile.verifiedArtistName}
+                        />
+                      )}
                     </h3>
                     <p className="mt-1 font-mono-tabular text-xs text-[#5C534A]">
                       {data.profile.followerCount} followers ·{' '}

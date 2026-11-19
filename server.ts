@@ -5,6 +5,7 @@ import http from 'node:http';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { isDatabaseConfigured } from './src/db/index.ts';
+import adminRouter from './src/server/routes/admin.ts';
 import authRouter from './src/server/routes/auth.ts';
 import cratesRouter from './src/server/routes/crates.ts';
 import postsRouter from './src/server/routes/posts.ts';
@@ -51,6 +52,7 @@ async function startServer() {
   app.use('/api', postsRouter);
   app.use('/api', socialRouter);
   app.use('/api', cratesRouter);
+  app.use('/api', adminRouter);
 
   app.use('/api', (_req, res) => {
     res.status(404).json({ error: 'API route not found.' });

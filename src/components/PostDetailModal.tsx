@@ -6,12 +6,15 @@ import {
   Heart,
   Play,
   Radio,
+  ShieldAlert,
   Trash2,
   X,
 } from 'lucide-react';
 import { formatDuration, usePlayerStore } from '../store/playerStore';
 import { postToQueueTrack, type CommentItem, type FeedPost, type HubCrate } from '../types/hub';
 import type { SessionUser } from './AuthGateModal';
+import { DmcaModal } from './DmcaModal';
+import { VerifiedBadge } from './VerifiedBadge';
 
 interface PostDetailModalProps {
   post: FeedPost | null;
@@ -48,6 +51,7 @@ export function PostDetailModal({
   const [crateNotice, setCrateNotice] = useState<string | null>(null);
   const [commentError, setCommentError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
+  const [dmcaOpen, setDmcaOpen] = useState(false);
 
   useEffect(() => {
     if (!post) return;
@@ -214,9 +218,12 @@ export function PostDetailModal({
               <button
                 type="button"
                 onClick={() => onOpenProfile(post.author.username)}
-                className="font-semibold text-[#B84A2E] hover:underline cursor-pointer"
+                className="inline-flex items-center gap-1 font-semibold text-[#B84A2E] hover:underline cursor-pointer"
               >
-                @{post.author.username}
+                <span>@{post.author.username}</span>
+                {post.author.isVerifiedArtist && (
+                  <VerifiedBadge artistName={post.author.verifiedArtistName} />
+                )}
               </button>
               <span className="mx-1.5" aria-hidden="true">·</span>
               <span>{post.provider === 'youtube' ? 'YouTube' : 'SoundCloud'}</span>
@@ -335,8 +342,8 @@ export function PostDetailModal({
                 </div>
               )}
 
-              {sessionUser && (
-                <div className="flex items-center gap-4 pt-1 text-xs text-[#5C534A]">
+              <div className="flex flex-wrap items-center gap-4 pt-1 text-xs text-[#5C534A]">
+                {sessionUser && (
                   <button
                     type="button"
                     onClick={handleFlagPost}
@@ -345,18 +352,26 @@ export function PostDetailModal({
                     <Flag className="w-3.5 h-3.5" />
                     <span>Flag for review</span>
                   </button>
-                  {canDeletePost && (
-                    <button
-                      type="button"
-                      onClick={handleDeletePost}
-                      className="inline-flex items-center gap-1 hover:text-[#B84A2E] cursor-pointer"
-                    >
-                      <Trash2 className="w-3.5 h-3.5" />
-                      <span>Delete post</span>
-                    </button>
-                  )}
-                </div>
-              )}
+                )}
+                <button
+                  type="button"
+                  onClick={() => setDmcaOpen(true)}
+                  className="inline-flex items-center gap-1 hover:text-[#B84A2E] cursor-pointer"
+                >
+                  <ShieldAlert className="w-3.5 h-3.5" />
+                  <span>DMCA / Copyright</span>
+                </button>
+                {canDeletePost && (
+                  <button
+                    type="button"
+                    onClick={handleDeletePost}
+                    className="inline-flex items-center gap-1 hover:text-[#B84A2E] cursor-pointer"
+                  >
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Delete post</span>
+                  </button>
+                )}
+              </div>
             </div>
           </div>
 
@@ -441,9 +456,12 @@ export function PostDetailModal({
                           <button
                             type="button"
                             onClick={() => onOpenProfile(comment.username)}
-                            className="text-xs font-semibold text-[#1F1B18] hover:text-[#B84A2E] cursor-pointer"
+                            className="inline-flex items-center gap-1 text-xs font-semibold text-[#1F1B18] hover:text-[#B84A2E] cursor-pointer"
                           >
-                            @{comment.username}
+                            <span>@{comment.username}</span>
+                            {comment.isVerifiedArtist && (
+                              <VerifiedBadge artistName={comment.verifiedArtistName} />
+                            )}
                           </button>
                           <p className="mt-1 text-sm text-[#1F1B18] leading-relaxed">
                             {comment.body}
@@ -491,9 +509,12 @@ export function PostDetailModal({
                                     <button
                                       type="button"
                                       onClick={() => onOpenProfile(reply.username)}
-                                      className="text-xs font-semibold text-[#1F1B18] hover:text-[#B84A2E] cursor-pointer"
+                                      className="inline-flex items-center gap-1 text-xs font-semibold text-[#1F1B18] hover:text-[#B84A2E] cursor-pointer"
                                     >
-                                      @{reply.username}
+                                      <span>@{reply.username}</span>
+                                      {reply.isVerifiedArtist && (
+                                        <VerifiedBadge artistName={reply.verifiedArtistName} />
+                                      )}
                                     </button>
                                     <p className="text-xs text-[#1F1B18] mt-0.5 leading-relaxed">
                                       {reply.body}
@@ -523,6 +544,18 @@ export function PostDetailModal({
           </div>
         </div>
       </div>
+
+      {dmcaOpen && (
+        <DmcaModal
+          post={post}
+          sessionUser={sessionUser}
+          onClose={() => setDmcaOpen(false)}
+          onReported={(postId) => {
+            onPostRemoved(postId);
+            onClose();
+          }}
+        />
+      )}
     </div>
   );
 }

@@ -3,7 +3,13 @@ import { createJSONStorage, persist } from 'zustand/middleware';
 
 export type MediaProvider = 'youtube' | 'soundcloud';
 
-export type NavSection = 'Now Playing' | 'Browse' | 'Communities' | 'Charts' | 'Settings';
+export type NavSection =
+  | 'Now Playing'
+  | 'Browse'
+  | 'Communities'
+  | 'Charts'
+  | 'Settings'
+  | 'Admin';
 
 export interface QueueTrack {
   id: string;

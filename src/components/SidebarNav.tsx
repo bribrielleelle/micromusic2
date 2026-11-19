@@ -6,6 +6,7 @@ import {
   Plus,
   Search,
   Settings,
+  ShieldCheck,
   TrendingUp,
   Users,
   X,
@@ -13,6 +14,7 @@ import {
 import type { NavSection } from '../store/playerStore';
 import type { HubCrate } from '../types/hub';
 import type { SessionUser } from './AuthGateModal';
+import { VerifiedBadge } from './VerifiedBadge';
 
 const NAV_ITEMS: { label: NavSection; icon: typeof Disc3 }[] = [
   { label: 'Now Playing', icon: Disc3 },
@@ -165,6 +167,21 @@ export function SidebarNav({
             <Bookmark className="w-4 h-4 shrink-0" />
             <span>Saved Bookmarks</span>
           </button>
+
+          {sessionUser?.role === 'admin' && (
+            <button
+              type="button"
+              onClick={() => onSelectNav('Admin')}
+              className={`w-full flex items-center gap-3 px-3 py-2 text-sm rounded-md transition-colors whitespace-nowrap cursor-pointer ${
+                activeNav === 'Admin' && !activeCrateId && !bookmarksOnly
+                  ? 'bg-[#FCF9F4] text-[#B84A2E] font-semibold border border-[#DDD5C7]'
+                  : 'text-[#5C534A] hover:text-[#1F1B18] hover:bg-[#FCF9F4]/60'
+              }`}
+            >
+              <ShieldCheck className="w-4 h-4 shrink-0" />
+              <span>Admin Console</span>
+            </button>
+          )}
         </nav>
 
         <div className="border-t border-[#DDD5C7] pt-5 space-y-3">
@@ -214,9 +231,12 @@ export function SidebarNav({
             <button
               type="button"
               onClick={() => onOpenProfile(sessionUser.username)}
-              className="font-medium text-[#1F1B18] hover:text-[#B84A2E] truncate cursor-pointer"
+              className="inline-flex items-center gap-1 font-medium text-[#1F1B18] hover:text-[#B84A2E] truncate cursor-pointer"
             >
-              @{sessionUser.username}
+              <span className="truncate">@{sessionUser.username}</span>
+              {sessionUser.isVerifiedArtist && (
+                <VerifiedBadge artistName={sessionUser.verifiedArtistName} />
+              )}
             </button>
             <button
               type="button"

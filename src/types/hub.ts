@@ -4,6 +4,8 @@ export interface PostAuthor {
   id: string;
   username: string;
   avatarUrl: string | null;
+  isVerifiedArtist?: boolean;
+  verifiedArtistName?: string | null;
 }
 
 export interface FeedPost {
@@ -36,6 +38,8 @@ export interface CommentItem {
   createdAt: string;
   username: string;
   avatarUrl: string | null;
+  isVerifiedArtist?: boolean;
+  verifiedArtistName?: string | null;
 }
 
 export interface HubCrate {
@@ -70,6 +74,8 @@ export interface UserProfileResponse {
     links: Record<string, string> | null;
     avatarUrl: string | null;
     role: 'user' | 'admin';
+    isVerifiedArtist?: boolean;
+    verifiedArtistName?: string | null;
     createdAt: string;
     followerCount: number;
     followingCount: number;
@@ -83,6 +89,86 @@ export interface UserProfileResponse {
     mediaUrl: string;
     thumbnailUrl: string | null;
   }>;
+}
+
+export interface ArtistVerificationRequestItem {
+  id: string;
+  userId: string;
+  artistName: string;
+  portfolioUrl: string;
+  notes: string | null;
+  status: 'pending' | 'approved' | 'rejected';
+  createdAt: string;
+  reviewedAt: string | null;
+  username?: string;
+  email?: string;
+}
+
+export interface DmcaReportItem {
+  id: string;
+  postId: string | null;
+  claimantName: string;
+  reporterEmail: string;
+  reason: string;
+  rightsUrl: string | null;
+  status: 'open' | 'takedown_applied' | 'dismissed';
+  createdAt: string;
+  resolvedAt: string | null;
+  postTitle: string | null;
+  postMediaUrl: string | null;
+  postIsHidden: boolean | null;
+}
+
+export interface EmailAlertLogItem {
+  id: string;
+  recipientEmail: string;
+  alertType: string;
+  subject: string;
+  providerMessageId: string | null;
+  deliveryStatus: 'sent' | 'logged_unconfigured' | 'failed';
+  errorMessage: string | null;
+  createdAt: string;
+}
+
+export interface AdminOverviewResponse {
+  stats: {
+    usersCount: number;
+    postsCount: number;
+    flaggedPostsCount: number;
+    verifiedArtistsCount: number;
+    openDmcaCount: number;
+    pendingVerificationsCount: number;
+  };
+  resendConfigured: boolean;
+  adminAlertEmail: string | null;
+  flaggedPosts: Array<{
+    id: string;
+    title: string | null;
+    artistName: string | null;
+    mediaUrl: string;
+    isHidden: boolean;
+    createdAt: string;
+    authorUsername: string;
+    authorIsVerifiedArtist: boolean;
+  }>;
+  dmcaReports: DmcaReportItem[];
+  verificationRequests: ArtistVerificationRequestItem[];
+  members: Array<{
+    id: string;
+    username: string;
+    email: string;
+    role: 'user' | 'admin';
+    isVerifiedArtist: boolean;
+    verifiedArtistName: string | null;
+    createdAt: string;
+  }>;
+  invites: Array<{
+    code: string;
+    createdBy: string | null;
+    usedBy: string | null;
+    createdAt: string;
+  }>;
+  emailAlerts: EmailAlertLogItem[];
 }
 
 const COVER_TONES = ['#2E2622', '#394037', '#523B2B', '#23282D', '#43302E'];

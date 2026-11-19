@@ -6,6 +6,8 @@ export interface SessionUser {
   username: string;
   email: string;
   role: 'user' | 'admin';
+  isVerifiedArtist?: boolean;
+  verifiedArtistName?: string | null;
 }
 
 interface AuthGateModalProps {
