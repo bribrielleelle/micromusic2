@@ -1,5 +1,4 @@
-import { create } from 'zustand';
-import { createJSONStorage, persist } from 'zustand/middleware';
+import { useCallback, useSyncExternalStore } from 'react';
 
 export type MediaProvider = 'youtube' | 'soundcloud';
 
@@ -174,152 +173,203 @@ interface PlayerState {
   setQueueDrawerOpen: (open: boolean) => void;
 }
 
-export const usePlayerStore = create<PlayerState>()(
-  persist(
-    (set, get) => ({
-      currentTrack: INITIAL_TRACKS[0],
-      queue: INITIAL_TRACKS.slice(1),
-      history: [],
-      isPlaying: false,
-      volume: 75,
-      isMuted: false,
+type PersistedPlayerState = Pick<
+  PlayerState,
+  'currentTrack' | 'queue' | 'history' | 'volume' | 'isMuted'
+>;
+
+const STORAGE_KEY = 'sona-player-queue-v1';
+const listeners = new Set<() => void>();
+
+function readPersistedState(): Partial<PersistedPlayerState> {
+  if (typeof window === 'undefined') return {};
+
+  try {
+    const raw = window.localStorage.getItem(STORAGE_KEY);
+    if (!raw) return {};
+
+    const parsed: unknown = JSON.parse(raw);
+    if (!parsed || typeof parsed !== 'object') return {};
+    const wrapper = parsed as { state?: unknown };
+    const saved = wrapper.state ?? parsed;
+    if (!saved || typeof saved !== 'object') return {};
+
+    const value = saved as Record<string, unknown>;
+    return {
+      ...(value.currentTrack === null ||
+      (typeof value.currentTrack === 'object' && value.currentTrack !== null)
+        ? { currentTrack: value.currentTrack as QueueTrack | null }
+        : {}),
+      ...(Array.isArray(value.queue) ? { queue: value.queue as QueueTrack[] } : {}),
+      ...(Array.isArray(value.history)
+        ? { history: value.history as QueueTrack[] }
+        : {}),
+      ...(typeof value.volume === 'number'
+        ? { volume: Math.max(0, Math.min(100, value.volume)) }
+        : {}),
+      ...(typeof value.isMuted === 'boolean' ? { isMuted: value.isMuted } : {}),
+    };
+  } catch {
+    return {};
+  }
+}
+
+function persistState(current: PlayerState): void {
+  if (typeof window === 'undefined') return;
+
+  try {
+    const persisted: PersistedPlayerState = {
+      currentTrack: current.currentTrack,
+      queue: current.queue,
+      history: current.history,
+      volume: current.volume,
+      isMuted: current.isMuted,
+    };
+    window.localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify({ state: persisted, version: 0 }),
+    );
+  } catch {
+    // Playback remains usable when browser storage is unavailable or full.
+  }
+}
+
+let state: PlayerState = {
+  currentTrack: INITIAL_TRACKS[0],
+  queue: INITIAL_TRACKS.slice(1),
+  history: [],
+  isPlaying: false,
+  volume: 75,
+  isMuted: false,
+  progressSeconds: 0,
+  durationSeconds: INITIAL_TRACKS[0].durationSeconds,
+  seekRequestSeconds: null,
+  queueDrawerOpen: false,
+  ...readPersistedState(),
+  playTrack: (track) => {
+    const { currentTrack, queue, history } = state;
+    const nextHistory =
+      currentTrack && currentTrack.id !== track.id
+        ? [currentTrack, ...history.filter((h) => h.id !== currentTrack.id)].slice(0, 25)
+        : history;
+
+    updateState({
+      currentTrack: track,
+      queue: queue.filter((q) => q.id !== track.id),
+      history: nextHistory,
+      isPlaying: true,
       progressSeconds: 0,
-      durationSeconds: INITIAL_TRACKS[0].durationSeconds,
+      durationSeconds: track.durationSeconds,
       seekRequestSeconds: null,
-      queueDrawerOpen: false,
-
-      playTrack: (track) => {
-        const { currentTrack, queue, history } = get();
-        const nextHistory =
-          currentTrack && currentTrack.id !== track.id
-            ? [currentTrack, ...history.filter((h) => h.id !== currentTrack.id)].slice(0, 25)
-            : history;
-
-        set({
-          currentTrack: track,
-          queue: queue.filter((q) => q.id !== track.id),
-          history: nextHistory,
-          isPlaying: true,
-          progressSeconds: 0,
-          durationSeconds: track.durationSeconds,
-          seekRequestSeconds: null,
-        });
-      },
-
-      enqueueTrack: (track) => {
-        const { currentTrack, queue } = get();
-        if (currentTrack?.id === track.id || queue.some((q) => q.id === track.id)) {
-          return;
-        }
-        set({ queue: [...queue, track] });
-      },
-
-      playNext: (track) => {
-        const { currentTrack, queue } = get();
-        if (currentTrack?.id === track.id) return;
-        const filtered = queue.filter((q) => q.id !== track.id);
-        set({ queue: [track, ...filtered] });
-      },
-
-      removeFromQueue: (trackId) => {
-        set((state) => ({
-          queue: state.queue.filter((item) => item.id !== trackId),
-        }));
-      },
-
-      moveQueueItem: (fromIndex, toIndex) => {
-        set((state) => {
-          if (
-            fromIndex < 0 ||
-            toIndex < 0 ||
-            fromIndex >= state.queue.length ||
-            toIndex >= state.queue.length
-          ) {
-            return state;
-          }
-          const updated = [...state.queue];
-          const [moved] = updated.splice(fromIndex, 1);
-          updated.splice(toIndex, 0, moved);
-          return { queue: updated };
-        });
-      },
-
-      clearQueue: () => set({ queue: [] }),
-
-      skipNext: () => {
-        const { currentTrack, queue, history } = get();
-        if (queue.length === 0) {
-          set({ isPlaying: false, progressSeconds: 0 });
-          return;
-        }
-        const [nextTrack, ...restQueue] = queue;
-        const nextHistory = currentTrack
-          ? [currentTrack, ...history.filter((h) => h.id !== currentTrack.id)].slice(0, 25)
-          : history;
-        set({
-          currentTrack: nextTrack,
-          queue: restQueue,
-          history: nextHistory,
-          isPlaying: true,
-          progressSeconds: 0,
-          durationSeconds: nextTrack.durationSeconds,
-          seekRequestSeconds: null,
-        });
-      },
-
-      skipPrevious: () => {
-        const { currentTrack, queue, history, progressSeconds } = get();
-        if (progressSeconds > 5 && currentTrack) {
-          set({ progressSeconds: 0, seekRequestSeconds: 0 });
-          return;
-        }
-        if (history.length === 0) {
-          set({ progressSeconds: 0, seekRequestSeconds: 0 });
-          return;
-        }
-        const [prevTrack, ...restHistory] = history;
-        const nextQueue = currentTrack
-          ? [currentTrack, ...queue.filter((q) => q.id !== currentTrack.id)]
-          : queue;
-        set({
-          currentTrack: prevTrack,
-          queue: nextQueue,
-          history: restHistory,
-          isPlaying: true,
-          progressSeconds: 0,
-          durationSeconds: prevTrack.durationSeconds,
-          seekRequestSeconds: null,
-        });
-      },
-
-      togglePlay: () => set((state) => ({ isPlaying: !state.isPlaying })),
-      setPlaying: (playing) => set({ isPlaying: playing }),
-      setVolume: (volume) =>
-        set({ volume: Math.max(0, Math.min(100, volume)), isMuted: volume === 0 }),
-      toggleMute: () => set((state) => ({ isMuted: !state.isMuted })),
-      setProgress: (progressSeconds, durationSeconds) =>
-        set((state) => ({
-          progressSeconds,
-          durationSeconds:
-            typeof durationSeconds === 'number' && durationSeconds > 0
-              ? durationSeconds
-              : state.durationSeconds,
-        })),
-      requestSeek: (seconds) =>
-        set({ progressSeconds: seconds, seekRequestSeconds: seconds }),
-      clearSeekRequest: () => set({ seekRequestSeconds: null }),
-      setQueueDrawerOpen: (open) => set({ queueDrawerOpen: open }),
+    });
+  },
+  enqueueTrack: (track) => {
+    const { currentTrack, queue } = state;
+    if (currentTrack?.id === track.id || queue.some((q) => q.id === track.id)) {
+      return;
+    }
+    updateState({ queue: [...queue, track] });
+  },
+  playNext: (track) => {
+    const { currentTrack, queue } = state;
+    if (currentTrack?.id === track.id) return;
+    const filtered = queue.filter((q) => q.id !== track.id);
+    updateState({ queue: [track, ...filtered] });
+  },
+  removeFromQueue: (trackId) =>
+    updateState({
+      queue: state.queue.filter((item) => item.id !== trackId),
     }),
-    {
-      name: 'sona-player-queue-v1',
-      storage: createJSONStorage(() => localStorage),
-      partialize: (state) => ({
-        currentTrack: state.currentTrack,
-        queue: state.queue,
-        history: state.history,
-        volume: state.volume,
-        isMuted: state.isMuted,
-      }),
-    },
-  ),
-);
+  moveQueueItem: (fromIndex, toIndex) => {
+    if (
+      fromIndex < 0 ||
+      toIndex < 0 ||
+      fromIndex >= state.queue.length ||
+      toIndex >= state.queue.length
+    ) {
+      return;
+    }
+    const updated = [...state.queue];
+    const [moved] = updated.splice(fromIndex, 1);
+    updated.splice(toIndex, 0, moved);
+    updateState({ queue: updated });
+  },
+  clearQueue: () => updateState({ queue: [] }),
+  skipNext: () => {
+    const { currentTrack, queue, history } = state;
+    if (queue.length === 0) {
+      updateState({ isPlaying: false, progressSeconds: 0 });
+      return;
+    }
+    const [nextTrack, ...restQueue] = queue;
+    const nextHistory = currentTrack
+      ? [currentTrack, ...history.filter((h) => h.id !== currentTrack.id)].slice(0, 25)
+      : history;
+    updateState({
+      currentTrack: nextTrack,
+      queue: restQueue,
+      history: nextHistory,
+      isPlaying: true,
+      progressSeconds: 0,
+      durationSeconds: nextTrack.durationSeconds,
+      seekRequestSeconds: null,
+    });
+  },
+  skipPrevious: () => {
+    const { currentTrack, queue, history, progressSeconds } = state;
+    if (progressSeconds > 5 && currentTrack) {
+      updateState({ progressSeconds: 0, seekRequestSeconds: 0 });
+      return;
+    }
+    if (history.length === 0) {
+      updateState({ progressSeconds: 0, seekRequestSeconds: 0 });
+      return;
+    }
+    const [prevTrack, ...restHistory] = history;
+    const nextQueue = currentTrack
+      ? [currentTrack, ...queue.filter((q) => q.id !== currentTrack.id)]
+      : queue;
+    updateState({
+      currentTrack: prevTrack,
+      queue: nextQueue,
+      history: restHistory,
+      isPlaying: true,
+      progressSeconds: 0,
+      durationSeconds: prevTrack.durationSeconds,
+      seekRequestSeconds: null,
+    });
+  },
+  togglePlay: () => updateState({ isPlaying: !state.isPlaying }),
+  setPlaying: (playing) => updateState({ isPlaying: playing }),
+  setVolume: (volume) =>
+    updateState({ volume: Math.max(0, Math.min(100, volume)), isMuted: volume === 0 }),
+  toggleMute: () => updateState({ isMuted: !state.isMuted }),
+  setProgress: (progressSeconds, durationSeconds) =>
+    updateState({
+      progressSeconds,
+      durationSeconds:
+        typeof durationSeconds === 'number' && durationSeconds > 0
+          ? durationSeconds
+          : state.durationSeconds,
+    }),
+  requestSeek: (seconds) =>
+    updateState({ progressSeconds: seconds, seekRequestSeconds: seconds }),
+  clearSeekRequest: () => updateState({ seekRequestSeconds: null }),
+  setQueueDrawerOpen: (open) => updateState({ queueDrawerOpen: open }),
+};
+
+function updateState(update: Partial<PlayerState>): void {
+  state = { ...state, ...update };
+  persistState(state);
+  listeners.forEach((listener) => listener());
+}
+
+function subscribe(listener: () => void): () => void {
+  listeners.add(listener);
+  return () => listeners.delete(listener);
+}
+
+export function usePlayerStore<T>(selector: (current: PlayerState) => T): T {
+  const getSnapshot = useCallback(() => selector(state), [selector]);
+  return useSyncExternalStore(subscribe, getSnapshot, getSnapshot);
+}

@@ -1,0 +1,1 @@
+- [State management preference](state-management-preference.md) — Do not add Zustand; retain a built-in React-based store.
