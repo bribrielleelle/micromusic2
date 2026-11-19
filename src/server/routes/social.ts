@@ -285,6 +285,8 @@ socialRouter.post(
           createdAt: created.createdAt.toISOString(),
           username: req.authUser!.username,
           avatarUrl: req.authUser!.avatarUrl,
+          isVerifiedArtist: req.authUser!.isVerifiedArtist,
+          verifiedArtistName: req.authUser!.verifiedArtistName,
         },
       });
     } catch (error) {
@@ -346,6 +348,8 @@ socialRouter.get('/users/:id', optionalAuth, async (req: AuthRequest, res: Respo
         links: users.links,
         avatarUrl: users.avatarUrl,
         role: users.role,
+        isVerifiedArtist: users.isVerifiedArtist,
+        verifiedArtistName: users.verifiedArtistName,
         createdAt: users.createdAt,
       })
       .from(users)
@@ -465,6 +469,8 @@ socialRouter.patch(
           username: users.username,
           email: users.email,
           role: users.role,
+          isVerifiedArtist: users.isVerifiedArtist,
+          verifiedArtistName: users.verifiedArtistName,
           bio: users.bio,
           links: users.links,
           avatarUrl: users.avatarUrl,

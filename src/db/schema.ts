@@ -23,6 +23,9 @@ export const users = pgTable('users', {
   email: varchar('email', { length: 255 }).notNull().unique(),
   passwordHash: text('password_hash'),
   role: userRoleEnum('role').default('user').notNull(),
+  isVerifiedArtist: boolean('is_verified_artist').default(false).notNull(),
+  verifiedArtistName: varchar('verified_artist_name', { length: 120 }),
+  verifiedAt: timestamp('verified_at'),
   bio: text('bio'),
   links: jsonb('links').$type<Record<string, string>>(),
   avatarUrl: text('avatar_url'),
@@ -191,3 +194,62 @@ export const inviteCodes = pgTable('invite_codes', {
   }),
   createdAt: timestamp('created_at').defaultNow().notNull(),
 });
+
+export const artistVerificationRequests = pgTable(
+  'artist_verification_requests',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    userId: varchar('user_id', { length: 255 })
+      .notNull()
+      .references(() => users.id, { onDelete: 'cascade' }),
+    artistName: varchar('artist_name', { length: 120 }).notNull(),
+    portfolioUrl: text('portfolio_url').notNull(),
+    notes: text('notes'),
+    status: varchar('status', { length: 24 }).default('pending').notNull(),
+    reviewedBy: varchar('reviewed_by', { length: 255 }).references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    reviewedAt: timestamp('reviewed_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('artist_verif_user_idx').on(table.userId, table.status)],
+);
+
+export const dmcaReports = pgTable(
+  'dmca_reports',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    postId: uuid('post_id').references(() => posts.id, { onDelete: 'cascade' }),
+    reporterUserId: varchar('reporter_user_id', { length: 255 }).references(
+      () => users.id,
+      { onDelete: 'set null' },
+    ),
+    reporterEmail: varchar('reporter_email', { length: 255 }).notNull(),
+    claimantName: varchar('claimant_name', { length: 120 }).notNull(),
+    reason: text('reason').notNull(),
+    rightsUrl: text('rights_url'),
+    status: varchar('status', { length: 24 }).default('open').notNull(),
+    resolvedBy: varchar('resolved_by', { length: 255 }).references(() => users.id, {
+      onDelete: 'set null',
+    }),
+    resolvedAt: timestamp('resolved_at'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('dmca_reports_status_idx').on(table.status, table.createdAt)],
+);
+
+export const emailAlerts = pgTable(
+  'email_alerts',
+  {
+    id: uuid('id').defaultRandom().primaryKey(),
+    recipientEmail: varchar('recipient_email', { length: 255 }).notNull(),
+    alertType: varchar('alert_type', { length: 64 }).notNull(),
+    subject: text('subject').notNull(),
+    providerMessageId: varchar('provider_message_id', { length: 255 }),
+    deliveryStatus: varchar('delivery_status', { length: 32 }).notNull(),
+    errorMessage: text('error_message'),
+    createdAt: timestamp('created_at').defaultNow().notNull(),
+  },
+  (table) => [index('email_alerts_created_idx').on(table.createdAt)],
+);
+

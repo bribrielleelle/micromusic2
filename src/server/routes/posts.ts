@@ -21,6 +21,7 @@ import {
 } from '../auth.ts';
 import { fetchProviderOEmbed } from '../oembed.ts';
 import { dbRateLimit } from '../rateLimit.ts';
+import { getAdminAlertEmail, sendResendAlert } from '../resend.ts';
 
 const postsRouter = Router();
 
@@ -66,6 +67,8 @@ async function hydratePosts(
     createdAt: Date;
     authorUsername: string;
     authorAvatarUrl: string | null;
+    authorIsVerifiedArtist?: boolean;
+    authorVerifiedArtistName?: string | null;
   }>,
   viewerId?: string,
 ) {
@@ -129,6 +132,8 @@ async function hydratePosts(
       id: row.userId,
       username: row.authorUsername,
       avatarUrl: row.authorAvatarUrl,
+      isVerifiedArtist: Boolean(row.authorIsVerifiedArtist),
+      verifiedArtistName: row.authorVerifiedArtistName ?? null,
     },
     likeCount: likeCountMap.get(row.id) ?? 0,
     bookmarkCount: bookmarkCountMap.get(row.id) ?? 0,
@@ -184,6 +189,8 @@ postsRouter.get('/posts', optionalAuth, async (req: AuthRequest, res: Response) 
           createdAt: posts.createdAt,
           authorUsername: users.username,
           authorAvatarUrl: users.avatarUrl,
+          authorIsVerifiedArtist: users.isVerifiedArtist,
+          authorVerifiedArtistName: users.verifiedArtistName,
         })
         .from(posts)
         .innerJoin(users, eq(posts.userId, users.id))
@@ -217,6 +224,8 @@ postsRouter.get('/posts', optionalAuth, async (req: AuthRequest, res: Response) 
         createdAt: posts.createdAt,
         authorUsername: users.username,
         authorAvatarUrl: users.avatarUrl,
+        authorIsVerifiedArtist: users.isVerifiedArtist,
+        authorVerifiedArtistName: users.verifiedArtistName,
       })
       .from(posts)
       .innerJoin(users, eq(posts.userId, users.id))
@@ -296,6 +305,8 @@ postsRouter.get('/search', optionalAuth, async (req: AuthRequest, res: Response)
         createdAt: posts.createdAt,
         authorUsername: users.username,
         authorAvatarUrl: users.avatarUrl,
+        authorIsVerifiedArtist: users.isVerifiedArtist,
+        authorVerifiedArtistName: users.verifiedArtistName,
       })
       .from(posts)
       .innerJoin(users, eq(posts.userId, users.id))
@@ -342,6 +353,8 @@ postsRouter.get('/posts/:id', optionalAuth, async (req: AuthRequest, res: Respon
         createdAt: posts.createdAt,
         authorUsername: users.username,
         authorAvatarUrl: users.avatarUrl,
+        authorIsVerifiedArtist: users.isVerifiedArtist,
+        authorVerifiedArtistName: users.verifiedArtistName,
       })
       .from(posts)
       .innerJoin(users, eq(posts.userId, users.id))
@@ -363,6 +376,8 @@ postsRouter.get('/posts/:id', optionalAuth, async (req: AuthRequest, res: Respon
         createdAt: comments.createdAt,
         username: users.username,
         avatarUrl: users.avatarUrl,
+        isVerifiedArtist: users.isVerifiedArtist,
+        verifiedArtistName: users.verifiedArtistName,
       })
       .from(comments)
       .innerJoin(users, eq(comments.userId, users.id))
@@ -404,6 +419,8 @@ postsRouter.get('/posts/:id/comments', async (req: AuthRequest, res: Response) =
         createdAt: comments.createdAt,
         username: users.username,
         avatarUrl: users.avatarUrl,
+        isVerifiedArtist: users.isVerifiedArtist,
+        verifiedArtistName: users.verifiedArtistName,
       })
       .from(comments)
       .innerJoin(users, eq(comments.userId, users.id))
@@ -502,6 +519,8 @@ postsRouter.post(
             ...created,
             authorUsername: req.authUser!.username,
             authorAvatarUrl: req.authUser!.avatarUrl,
+            authorIsVerifiedArtist: req.authUser!.isVerifiedArtist,
+            authorVerifiedArtistName: req.authUser!.verifiedArtistName,
           },
         ],
         req.authUser!.id,
@@ -619,11 +638,27 @@ postsRouter.patch(
         .update(posts)
         .set({ isHidden: true })
         .where(eq(posts.id, id))
-        .returning({ id: posts.id, isHidden: posts.isHidden });
+        .returning({
+          id: posts.id,
+          isHidden: posts.isHidden,
+          title: posts.title,
+          mediaUrl: posts.mediaUrl,
+        });
 
       if (!updated) {
         return res.status(404).json({ error: 'Post not found.' });
       }
+
+      const adminEmail = getAdminAlertEmail();
+      if (adminEmail) {
+        void sendResendAlert({
+          to: adminEmail,
+          alertType: 'moderation_flag',
+          subject: `[SONA Moderation] Post flagged for review: ${updated.title || updated.id}`,
+          text: `Member @${req.authUser!.username} flagged post "${updated.title || 'Untitled'}" (${updated.mediaUrl}) for admin review. The post has been hidden pending moderation.`,
+        });
+      }
+
       return res.json({ post: updated });
     } catch (error) {
       const classified = classifyDatabaseError(error);

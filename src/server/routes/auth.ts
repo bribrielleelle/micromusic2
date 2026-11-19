@@ -116,6 +116,8 @@ authRouter.post(
             username: users.username,
             email: users.email,
             role: users.role,
+            isVerifiedArtist: users.isVerifiedArtist,
+            verifiedArtistName: users.verifiedArtistName,
             bio: users.bio,
             avatarUrl: users.avatarUrl,
           });
@@ -204,6 +206,8 @@ authRouter.post(
           username: user.username,
           email: user.email,
           role: user.role,
+          isVerifiedArtist: user.isVerifiedArtist,
+          verifiedArtistName: user.verifiedArtistName,
           bio: user.bio,
           avatarUrl: user.avatarUrl,
         },

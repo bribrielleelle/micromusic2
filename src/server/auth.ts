@@ -12,6 +12,8 @@ export interface AuthUser {
   username: string;
   email: string;
   role: UserRole;
+  isVerifiedArtist: boolean;
+  verifiedArtistName: string | null;
   bio: string | null;
   avatarUrl: string | null;
 }
@@ -209,6 +211,8 @@ export async function optionalAuth(req: AuthRequest, _res: Response, next: NextF
         username: users.username,
         email: users.email,
         role: users.role,
+        isVerifiedArtist: users.isVerifiedArtist,
+        verifiedArtistName: users.verifiedArtistName,
         bio: users.bio,
         avatarUrl: users.avatarUrl,
       })
@@ -247,6 +251,8 @@ export async function requireAuth(req: AuthRequest, res: Response, next: NextFun
         username: users.username,
         email: users.email,
         role: users.role,
+        isVerifiedArtist: users.isVerifiedArtist,
+        verifiedArtistName: users.verifiedArtistName,
         bio: users.bio,
         avatarUrl: users.avatarUrl,
       })

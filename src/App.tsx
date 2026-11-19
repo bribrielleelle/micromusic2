@@ -1,5 +1,6 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState, type FormEvent } from 'react';
 import {
+  BadgeCheck,
   Bookmark,
   Heart,
   ListPlus,
@@ -31,10 +32,12 @@ import {
 } from './store/vibeQuiz';
 import {
   postToQueueTrack,
+  type ArtistVerificationRequestItem,
   type CrateDetailResponse,
   type FeedPost,
   type HubCrate,
 } from './types/hub';
+import { AdminDashboardView } from './components/AdminDashboardView';
 import { AuthGateModal, type SessionUser } from './components/AuthGateModal';
 import { CreateCrateModal } from './components/CreateCrateModal';
 import { NowPlayingCard } from './components/NowPlayingCard';
@@ -44,6 +47,7 @@ import { ProfileDrawer } from './components/ProfileDrawer';
 import { QueueDrawer } from './components/QueueDrawer';
 import { ShareTrackModal } from './components/ShareTrackModal';
 import { SidebarNav } from './components/SidebarNav';
+import { VerifiedBadge } from './components/VerifiedBadge';
 import { VibeQuizModal } from './components/VibeQuizModal';
 import { VinylDisplay } from './components/VinylDisplay';
 
@@ -110,6 +114,15 @@ export default function App() {
     () => getArchetypeById(vibeProfile?.archetypeId),
     [vibeProfile],
   );
+
+  // Phase 5: Verified Artist claim state (Settings)
+  const [verificationRequest, setVerificationRequest] =
+    useState<ArtistVerificationRequestItem | null>(null);
+  const [claimArtistName, setClaimArtistName] = useState('');
+  const [claimPortfolioUrl, setClaimPortfolioUrl] = useState('');
+  const [claimNotes, setClaimNotes] = useState('');
+  const [claimSubmitting, setClaimSubmitting] = useState(false);
+  const [claimFeedback, setClaimFeedback] = useState<string | null>(null);
 
   const currentTrack = usePlayerStore((s) => s.currentTrack);
   const queue = usePlayerStore((s) => s.queue);
@@ -523,6 +536,60 @@ export default function App() {
 
   const isSettingsView =
     activeNav === 'Settings' && !activeCrateId && !bookmarksOnly;
+  const isAdminView =
+    activeNav === 'Admin' &&
+    sessionUser?.role === 'admin' &&
+    !activeCrateId &&
+    !bookmarksOnly;
+
+  useEffect(() => {
+    if (!sessionUser) {
+      setVerificationRequest(null);
+      return;
+    }
+    fetch('/api/artist-verification/me', { credentials: 'include' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (data?.latestRequest) {
+          setVerificationRequest(data.latestRequest);
+        }
+      })
+      .catch(() => {});
+  }, [sessionUser]);
+
+  const handleSubmitVerificationClaim = async (e: FormEvent) => {
+    e.preventDefault();
+    setClaimFeedback(null);
+    setClaimSubmitting(true);
+    try {
+      const res = await fetch('/api/artist-verification/request', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          artistName: claimArtistName,
+          portfolioUrl: claimPortfolioUrl,
+          notes: claimNotes,
+        }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) {
+        setClaimFeedback(data?.error || 'Unable to submit Verified Artist claim.');
+        return;
+      }
+      if (data?.request) {
+        setVerificationRequest(data.request);
+        setClaimArtistName('');
+        setClaimPortfolioUrl('');
+        setClaimNotes('');
+        setClaimFeedback('Verification application submitted for admin review.');
+      }
+    } catch {
+      setClaimFeedback('Network error submitting verification request.');
+    } finally {
+      setClaimSubmitting(false);
+    }
+  };
 
   const feedTitle = activeCrateDetail
     ? activeCrateDetail.crate.title
@@ -570,9 +637,12 @@ export default function App() {
             <button
               type="button"
               onClick={() => setProfileTarget(sessionUser.username)}
-              className="text-xs font-medium text-[#1F1B18]"
+              className="inline-flex items-center gap-1 text-xs font-medium text-[#1F1B18]"
             >
-              @{sessionUser.username}
+              <span>@{sessionUser.username}</span>
+              {sessionUser.isVerifiedArtist && (
+                <VerifiedBadge artistName={sessionUser.verifiedArtistName} />
+              )}
             </button>
           ) : (
             <button
@@ -831,7 +901,119 @@ export default function App() {
                   </div>
                 )}
               </div>
+
+              {/* Verified Artist Badge Claim Card (Phase 5 / v1.1) */}
+              {sessionUser && (
+                <div className="rounded-xl border border-[#DDD5C7] bg-[#FCF9F4] p-6 space-y-4">
+                  <div className="flex flex-wrap items-start justify-between gap-3">
+                    <div className="space-y-1">
+                      <p className="text-xs font-semibold text-[#B84A2E]">
+                        Verified Artist Program
+                      </p>
+                      <h3 className="font-display text-lg font-semibold text-[#1F1B18] flex items-center gap-1.5">
+                        {sessionUser.isVerifiedArtist ? (
+                          <>
+                            <span>Verified Artist Active</span>
+                            <VerifiedBadge
+                              artistName={sessionUser.verifiedArtistName}
+                            />
+                          </>
+                        ) : (
+                          <span>Claim Verified Artist Badge</span>
+                        )}
+                      </h3>
+                      <p className="text-xs text-[#5C534A]">
+                        {sessionUser.isVerifiedArtist
+                          ? `Your profile carries the Verified Artist badge${sessionUser.verifiedArtistName ? ` as ${sessionUser.verifiedArtistName}` : ''} across feeds, crates, and comments.`
+                          : 'Share your official SoundCloud, YouTube, or Bandcamp artist link for admin verification.'}
+                      </p>
+                    </div>
+                  </div>
+
+                  {!sessionUser.isVerifiedArtist && (
+                    verificationRequest?.status === 'pending' ? (
+                      <div className="rounded-md border border-[#DDD5C7] bg-[#F7F3EC] px-4 py-3 text-xs text-[#5C534A]">
+                        Application pending review for{' '}
+                        <span className="font-semibold text-[#1F1B18]">
+                          {verificationRequest.artistName}
+                        </span>{' '}
+                        ({verificationRequest.portfolioUrl}).
+                      </div>
+                    ) : (
+                      <form
+                        onSubmit={handleSubmitVerificationClaim}
+                        className="grid grid-cols-1 sm:grid-cols-2 gap-3"
+                      >
+                        <label className="block space-y-1">
+                          <span className="text-xs font-medium text-[#1F1B18]">
+                            Artist / Project Name
+                          </span>
+                          <input
+                            type="text"
+                            required
+                            value={claimArtistName}
+                            onChange={(e) => setClaimArtistName(e.target.value)}
+                            placeholder="e.g. Forss"
+                            className="w-full rounded-md border border-[#DDD5C7] bg-[#F7F3EC] px-3 py-2 text-xs text-[#1F1B18] focus:outline-none focus:border-[#B84A2E]"
+                          />
+                        </label>
+                        <label className="block space-y-1">
+                          <span className="text-xs font-medium text-[#1F1B18]">
+                            Official Artist Link (https://)
+                          </span>
+                          <input
+                            type="url"
+                            required
+                            value={claimPortfolioUrl}
+                            onChange={(e) => setClaimPortfolioUrl(e.target.value)}
+                            placeholder="https://soundcloud.com/your-handle"
+                            className="w-full rounded-md border border-[#DDD5C7] bg-[#F7F3EC] px-3 py-2 text-xs text-[#1F1B18] focus:outline-none focus:border-[#B84A2E]"
+                          />
+                        </label>
+                        <label className="sm:col-span-2 block space-y-1">
+                          <span className="text-xs font-medium text-[#1F1B18]">
+                            Verification Notes (optional)
+                          </span>
+                          <input
+                            type="text"
+                            value={claimNotes}
+                            onChange={(e) => setClaimNotes(e.target.value)}
+                            placeholder="Link matching your artist bio or release catalog..."
+                            className="w-full rounded-md border border-[#DDD5C7] bg-[#F7F3EC] px-3 py-2 text-xs text-[#1F1B18] focus:outline-none focus:border-[#B84A2E]"
+                          />
+                        </label>
+                        <div className="sm:col-span-2 flex flex-wrap items-center justify-between gap-3 pt-1">
+                          {claimFeedback ? (
+                            <p className="text-xs text-[#9E3D24]">{claimFeedback}</p>
+                          ) : (
+                            <span className="text-[11px] text-[#5C534A]">
+                              {verificationRequest?.status === 'rejected'
+                                ? 'Previous claim was declined — submit updated details.'
+                                : 'Reviewed by SONA admins.'}
+                            </span>
+                          )}
+                          <button
+                            type="submit"
+                            disabled={claimSubmitting}
+                            className="inline-flex items-center gap-1.5 px-4 py-2 rounded-md bg-[#1F1B18] text-xs font-semibold text-[#FCF9F4] hover:bg-[#B84A2E] disabled:opacity-50 cursor-pointer"
+                          >
+                            <BadgeCheck className="w-3.5 h-3.5" />
+                            <span>
+                              {claimSubmitting ? 'Submitting...' : 'Submit Claim'}
+                            </span>
+                          </button>
+                        </div>
+                      </form>
+                    )
+                  )}
+                </div>
+              )}
             </section>
+          ) : isAdminView && sessionUser ? (
+            <AdminDashboardView
+              sessionUser={sessionUser}
+              onFeedChanged={() => loadFeed(null)}
+            />
           ) : (
             <section className="space-y-4">
               {!vibeBannerDismissed && !activeCrateId && !bookmarksOnly && (
@@ -1040,9 +1222,12 @@ export default function App() {
                             <button
                               type="button"
                               onClick={() => setProfileTarget(post.author.username)}
-                              className="font-medium text-[#1F1B18] hover:text-[#B84A2E] cursor-pointer"
+                              className="inline-flex items-center gap-1 font-medium text-[#1F1B18] hover:text-[#B84A2E] cursor-pointer"
                             >
-                              @{post.author.username}
+                              <span>@{post.author.username}</span>
+                              {post.author.isVerifiedArtist && (
+                                <VerifiedBadge artistName={post.author.verifiedArtistName} />
+                              )}
                             </button>
                             <span className="mx-1.5" aria-hidden="true">·</span>
                             <span>
